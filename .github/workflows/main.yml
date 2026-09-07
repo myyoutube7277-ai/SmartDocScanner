@@ -7,10 +7,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: SmartScanPro_GitHub_Build
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,10 +31,10 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon -Dkotlin.compiler.execution.strategy=in-process
+        run: gradle :app:assembleDebug --no-daemon -Dkotlin.compiler.execution.strategy=in-process
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SmartDocScanner-debug-apk
-          path: SmartScanPro_GitHub_Build/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
