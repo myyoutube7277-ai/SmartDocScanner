@@ -115,18 +115,38 @@ object ScanProcessor {
         return Bitmap.createBitmap(src,0,0,src.width,src.height,m,true)
     }
 
-    fun filter(src:Bitmap, mode:String):Bitmap {
-        val out=Bitmap.createBitmap(src.width,src.height,Bitmap.Config.ARGB_8888)
-        val c=Canvas(out)
-        val p=Paint(Paint.ANTI_ALIAS_FLAG)
-        val cm=when(mode){
-            "B&W" -> ColorMatrix().apply{setSaturation(0f); val v=1.7f; val t=-0.35f*255f; set(floatArrayOf(v,0f,0f,t,0f, v,0f,0f,t,0f, 0f,0f,v,0f,t, 0f,0f,0f,1f,0f))}
-            "High Contrast" -> ColorMatrix(floatArrayOf(1.7f,0f,0f,-80f,0f,0f,1.7f,0f,-80f,0f,0f,0f,1.7f,-80f,0f,0f,0f,0f,1f,0f))
-            "Gray" -> ColorMatrix().apply{setSaturation(0f)}
-            else -> ColorMatrix()
+    fun filter(src: Bitmap, mode: String): Bitmap {
+        if (mode == "Color") return src.copy(Bitmap.Config.ARGB_8888, false)
+        val w = src.width
+        val h = src.height
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val input = IntArray(w * h)
+        val output = IntArray(w * h)
+        src.getPixels(input, 0, w, 0, 0, w, h)
+        // A scanner-style grayscale pass avoids the blue/purple cast that can happen
+        // when a strong ColorMatrix is applied to camera JPEGs.
+        var minL = 255f
+        var maxL = 0f
+        val lum = FloatArray(input.size)
+        for (i in input.indices) {
+            val c = input[i]
+            val l = 0.299f * Color.red(c) + 0.587f * Color.green(c) + 0.114f * Color.blue(c)
+            lum[i] = l
+            if (l < minL) minL = l
+            if (l > maxL) maxL = l
         }
-        p.colorFilter=ColorMatrixColorFilter(cm)
-        c.drawBitmap(src,0f,0f,p)
+        val span = (maxL - minL).coerceAtLeast(1f)
+        for (i in input.indices) {
+            var v = ((lum[i] - minL) * 255f / span).roundToInt().coerceIn(0, 255)
+            if (mode == "B&W") {
+                // Pure scanner-like black/white with a small local-safe threshold.
+                v = if (v >= 158) 255 else 0
+            } else if (mode == "High Contrast") {
+                v = (((v - 128) * 1.35f) + 128f).roundToInt().coerceIn(0, 255)
+            }
+            output[i] = Color.rgb(v, v, v)
+        }
+        out.setPixels(output, 0, w, 0, 0, w, h)
         return out
     }
 }

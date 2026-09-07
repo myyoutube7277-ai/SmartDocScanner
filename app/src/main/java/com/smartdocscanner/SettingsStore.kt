@@ -6,7 +6,7 @@ object SettingsStore {
     private const val PREF = "smartdoc_settings"
     private fun p(c: Context) = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    fun darkTheme(c: Context): Boolean = p(c).getBoolean("dark_theme", false)
+    fun darkTheme(c: Context): Boolean = p(c).getBoolean("dark_theme", true)
     fun setDarkTheme(c: Context, value: Boolean) = p(c).edit().putBoolean("dark_theme", value).apply()
 
     fun autoCrop(c: Context): Boolean = p(c).getBoolean("auto_crop", true)

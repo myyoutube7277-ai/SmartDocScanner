@@ -81,6 +81,39 @@ object PdfEngine {
         }
     }
 
+    fun createIdCardPdf(contextDir: File, front: File, back: File, name: String): File? {
+        val a = BitmapFactory.decodeFile(front.absolutePath) ?: return null
+        val b = BitmapFactory.decodeFile(back.absolutePath) ?: run { a.recycle(); return null }
+        val out = File(contextDir, "${safe(name)}_${System.currentTimeMillis()}.pdf")
+        val pdf = PdfDocument()
+        return try {
+            val pageW = 595
+            val pageH = 842
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, 1).create())
+            page.canvas.drawColor(Color.WHITE)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            val gap = 24f
+            val margin = 28f
+            val boxW = (pageW - margin * 2 - gap) / 2f
+            fun drawCard(src: Bitmap, left: Float, top: Float) {
+                val scale = minOf(boxW / src.width, 300f / src.height)
+                val w = src.width * scale
+                val h = src.height * scale
+                val y = top + (300f - h) / 2f
+                page.canvas.drawBitmap(src, null, RectF(left, y, left + w, y + h), paint)
+            }
+            page.canvas.drawText("FRONT", margin, 62f, paint)
+            page.canvas.drawText("BACK", margin + boxW + gap, 62f, paint)
+            drawCard(a, margin, 78f)
+            drawCard(b, margin + boxW + gap, 78f)
+            pdf.finishPage(page)
+            FileOutputStream(out).use { pdf.writeTo(it) }
+            out.exists() && out.length() > 0
+        } catch (_: Exception) { false } finally {
+            pdf.close(); a.recycle(); b.recycle()
+        }
+    }
+
     fun pdfToImages(pdf: File, outDir: File): List<File> {
         val result = mutableListOf<File>()
         val pfd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
