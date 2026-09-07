@@ -11,12 +11,16 @@ object PdfEngine {
     enum class SizeMode { QUALITY, MAXIMUM }
 
     fun createPdf(contextDir: File, images: List<File>, mode: SizeMode, maxMb: Int, name: String="SmartDoc"): File? {
+        return createPdfWithLimit(contextDir, images, mode, maxMb * 1024L * 1024L, name)
+    }
+
+    fun createPdfWithLimit(contextDir: File, images: List<File>, mode: SizeMode, maxBytes: Long, name: String="SmartDoc"): File? {
         if(images.isEmpty()) return null
         val out=File(contextDir,"${name}_${System.currentTimeMillis()}.pdf")
         var factor=if(mode==SizeMode.QUALITY) 1.0 else 1.0
         repeat(if(mode==SizeMode.QUALITY) 1 else 8) {
             val ok=writePdf(out,images,factor)
-            if(ok && (mode==SizeMode.QUALITY || out.length() <= maxMb*1024L*1024L)) return out
+            if(ok && (mode==SizeMode.QUALITY || out.length() <= maxBytes)) return out
             factor*=0.78
         }
         out.delete()

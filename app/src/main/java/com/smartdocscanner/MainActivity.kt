@@ -3,6 +3,8 @@ package com.smartdocscanner
 import android.Manifest
 import android.content.*
 import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -78,6 +80,7 @@ fun SmartDocApp() {
                 onConvert = { screen = "convert" },
                 onBarcode = { screen = "barcode" },
                 onPdf = { screen = "pdf" },
+                onIdScan = { screen = "idscan" },
                 onSettings = { screen = "settings" },
                 onDocuments = { screen = "documents" },
                 refresh = refresh,
@@ -99,6 +102,7 @@ fun SmartDocApp() {
             "ocr" -> OcrScreen(onBack = { screen = "home" })
             "convert" -> ConvertScreen(onBack = { screen = "home" })
             "barcode" -> BarcodeScreen(onBack = { screen = "home" })
+            "idscan" -> IdScanScreen(onBack = { screen = "home" }, onSaved = { refresh++; screen = "home" })
             "pdf" -> PdfToolsScreen(onBack = { screen = "home" })
             "viewer" -> selectedFile?.let { ViewerScreen(it, onBack = { screen = "home" }) }
         }
@@ -113,6 +117,7 @@ fun HomeScreen(
     onConvert: () -> Unit,
     onBarcode: () -> Unit,
     onPdf: () -> Unit,
+    onIdScan: () -> Unit,
     onSettings: () -> Unit,
     onDocuments: () -> Unit,
     refresh: Int,
@@ -120,6 +125,15 @@ fun HomeScreen(
 ) {
     val c = LocalContext.current
     var query by remember { mutableStateOf("") }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            val files = uris.mapIndexedNotNull { i, u -> copyUriToCache(c, u, "gallery_${System.currentTimeMillis()}_$i.jpg") }
+            if (files.isNotEmpty()) {
+                val pdf = PdfEngine.createPdf(c.filesDir, files, SettingsStore.pdfMode(c), SettingsStore.maxMb(c), "Gallery_Scan")
+                if (pdf != null) { DocumentStore.add(c, DocumentRecord(System.currentTimeMillis(), "Gallery Scan", pdf.absolutePath)); Toast.makeText(c, "PDF saved", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
     var selectedTab by remember { mutableIntStateOf(0) }
     var listRefresh by remember { mutableIntStateOf(0) }
     val docs = remember(refresh, listRefresh, query, selectedTab) {
@@ -214,6 +228,17 @@ fun HomeScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Scan Document")
                         }
+                    }
+                }
+            }
+
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery Scan")
+                    }
+                    OutlinedButton(onClick = onIdScan, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.CreditCard, null); Spacer(Modifier.width(6.dp)); Text("ID Scan")
                     }
                 }
             }
@@ -344,6 +369,15 @@ private fun DocumentCard(r: DocumentRecord, onOpen: () -> Unit, onChanged: () ->
 fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
     val c = LocalContext.current
     var query by remember { mutableStateOf("") }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            val files = uris.mapIndexedNotNull { i, u -> copyUriToCache(c, u, "gallery_${System.currentTimeMillis()}_$i.jpg") }
+            if (files.isNotEmpty()) {
+                val pdf = PdfEngine.createPdf(c.filesDir, files, SettingsStore.pdfMode(c), SettingsStore.maxMb(c), "Gallery_Scan")
+                if (pdf != null) { DocumentStore.add(c, DocumentRecord(System.currentTimeMillis(), "Gallery Scan", pdf.absolutePath)); Toast.makeText(c, "PDF saved", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
     var onlyFavorites by remember { mutableStateOf(false) }
     var listRefresh by remember { mutableIntStateOf(0) }
     val docs = remember(refresh, listRefresh, query, onlyFavorites) {
@@ -407,18 +441,17 @@ fun SettingsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
                 SettingsRow("PDF mode", if (mode == PdfEngine.SizeMode.QUALITY) "Quality Based" else "Maximum Size", false, onClick = { showMode = true })
             }
             item {
-                OutlinedTextField(
-                    value = maxMb.toString(),
-                    onValueChange = { value ->
-                        val n = value.toIntOrNull() ?: 2
-                        maxMb = n.coerceAtLeast(2)
-                        SettingsStore.setMaxMb(c, maxMb)
-                        changed()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Maximum PDF size (MB, minimum 2)") }
-                )
+                var expanded by remember { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick={expanded=true}, modifier=Modifier.fillMaxWidth()) {
+                        Text("Maximum PDF size: ${maxMb} MB"); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown,null)
+                    }
+                    DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+                        listOf(2,5,10,20,50,100).forEach { size ->
+                            DropdownMenuItem(text={Text("${size} MB")},onClick={maxMb=size;SettingsStore.setMaxMb(c,size);expanded=false;changed()})
+                        }
+                    }
+                }
             }
             item { HorizontalDivider() }
             item { Text("OCR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
@@ -510,29 +543,50 @@ fun ScannerScreen(onBack:()->Unit,onSaved:()->Unit){
     var captured by remember{mutableStateOf<File?>(null)}
     var mode by remember{mutableStateOf(SettingsStore.pdfMode(c))}
     var maxMb by remember{mutableIntStateOf(SettingsStore.maxMb(c))}
+    var maxKb by remember{mutableIntStateOf(500)}
     var pages by remember{mutableStateOf(listOf<File>())}
+    var showName by remember{mutableStateOf(false)}
+    var name by remember{mutableStateOf("Scanned Document")}
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){ uris ->
+        val added=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"gallery_${System.currentTimeMillis()}_$idx.jpg")}
+        if(added.isNotEmpty()) pages=pages+added
+    }
     if(captured!=null){
-        ScanEditor(captured!!,onBack={captured=null},onAdd={f->pages=pages+f;captured=null},onFinish={
-            val pdf=PdfEngine.createPdf(c.filesDir,pages,mode,maxMb,"SmartDoc")
-            if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Scanned Document",pdf.absolutePath));Toast.makeText(c,"PDF saved",Toast.LENGTH_SHORT).show();onSaved()}
-            else Toast.makeText(c,"Maximum size target could not be met",Toast.LENGTH_LONG).show()
-        },pages=pages.size)
+        ScanEditor(captured!!,onBack={captured=null},onAdd={f->pages=pages+f;captured=null},onFinish={showName=true},pages=pages.size)
         return
     }
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->
         if(!granted) Toast.makeText(c,"Camera permission is required",Toast.LENGTH_LONG).show()
     }
     LaunchedEffect(Unit){permission.launch(Manifest.permission.CAMERA)}
+    if(showName){
+        AlertDialog(onDismissRequest={showName=false},title={Text("Save PDF")},text={OutlinedTextField(name,{name=it},label={Text("Document name")},singleLine=true)},confirmButton={
+            Button(onClick={
+                val pdf=if (maxKb == 500) PdfEngine.createPdfWithLimit(c.filesDir,pages,mode,500L*1024L,name.ifBlank{"Scanned Document"}) else PdfEngine.createPdf(c.filesDir,pages,mode,maxMb,name.ifBlank{"Scanned Document"})
+                if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),name.ifBlank{"Scanned Document"},pdf.absolutePath));Toast.makeText(c,"PDF saved",Toast.LENGTH_SHORT).show();showName=false;onSaved()} else Toast.makeText(c,"Could not meet selected size",Toast.LENGTH_LONG).show()
+            }){Text("Save")}
+        },dismissButton={TextButton(onClick={showName=false}){Text("Cancel")}})
+    }
     Scaffold(topBar={TopAppBar(title={Text("Document Scanner")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
         Column(Modifier.padding(pad).fillMaxSize()){
             CameraCapture(Modifier.fillMaxWidth().weight(1f)){captured=it}
+            Row(Modifier.padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                OutlinedButton(onClick={gallery.launch(arrayOf("image/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(5.dp));Text("Gallery")}
+                Button(onClick={if(pages.isNotEmpty())showName=true},modifier=Modifier.weight(1f)){Text("Finish (${pages.size})")}
+            }
             Text("PDF output size",Modifier.padding(horizontal=16.dp))
             Row(Modifier.padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 FilterChip(mode==PdfEngine.SizeMode.QUALITY,{mode=PdfEngine.SizeMode.QUALITY},label={Text("Quality Based")})
                 FilterChip(mode==PdfEngine.SizeMode.MAXIMUM,{mode=PdfEngine.SizeMode.MAXIMUM},label={Text("Maximum Size")})
             }
             if(mode==PdfEngine.SizeMode.MAXIMUM){
-                OutlinedTextField(maxMb.toString(),{maxMb=(it.toIntOrNull()?:2).coerceAtLeast(2)},Modifier.fillMaxWidth().padding(horizontal=16.dp),label={Text("Maximum MB (minimum 2)")})
+                var expanded by remember{mutableStateOf(false)}
+                Box(Modifier.padding(horizontal=16.dp).fillMaxWidth()){
+                    OutlinedButton(onClick={expanded=true},modifier=Modifier.fillMaxWidth()){Text("Maximum size: ${if(maxKb==500)"500 KB" else "${maxMb} MB"}");Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
+                    DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}){
+                        listOf("500 KB","1 MB","2 MB","5 MB","10 MB","20 MB","50 MB").forEach{label->DropdownMenuItem(text={Text(label)},onClick={if(label=="500 KB"){maxKb=500}else{maxKb=0;maxMb=label.substringBefore(" ").toInt()};expanded=false})}
+                    }
+                }
             }
             Text("Pages queued: ${pages.size}",Modifier.padding(16.dp))
         }
@@ -572,6 +626,7 @@ fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:()->Unit,pa
     val c=LocalContext.current
     var bmp by remember(file){mutableStateOf(ScanProcessor.decode(file)?.let{ if (SettingsStore.autoCrop(c)) ScanProcessor.autoCrop(it) else it })}
     var filter by remember{mutableStateOf(SettingsStore.filter(c))}
+    var showCrop by remember{mutableStateOf(false)}
     LaunchedEffect(file) { if (filter != "Color") bmp = bmp?.let { ScanProcessor.filter(it, filter) } }
     Scaffold(topBar={TopAppBar(title={Text("Edit Scan")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
         Column(Modifier.padding(pad).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
@@ -580,15 +635,21 @@ fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:()->Unit,pa
                 listOf("Color","Gray","B&W","High Contrast").forEach{FilterChip(filter==it,{filter=it;bmp=bmp?.let{x->ScanProcessor.filter(x,it)}},label={Text(it)})}
             }
             Row(modifier=Modifier.padding(top=8.dp), horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={bmp=bmp?.let{ScanProcessor.rotate(it)}}){Text("Rotate 90°")}
+                OutlinedButton(onClick={showCrop=true}){Icon(Icons.Default.Crop,null);Spacer(Modifier.width(4.dp));Text("Manual Crop")}
+                OutlinedButton(onClick={bmp=bmp?.let{ScanProcessor.rotate(it)}}){Icon(Icons.Default.RotateRight,null);Spacer(Modifier.width(4.dp));Text("Rotate")}
+            }
+            Row(modifier=Modifier.padding(top=8.dp), horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 Button(onClick={
                     val out=File(c.cacheDir,"page_${System.currentTimeMillis()}.jpg")
                     FileOutputStream(out).use{bmp?.compress(Bitmap.CompressFormat.JPEG,92,it)}
                     onAdd(out)
-                }){Text("Add Page")}
-                if(pages>0) Button(onClick=onFinish){Text("Finish PDF ($pages)")}
+                }){Icon(Icons.Default.Add,null);Spacer(Modifier.width(4.dp));Text("Add Page")}
+                if(pages>0) Button(onClick=onFinish){Icon(Icons.Default.Done,null);Spacer(Modifier.width(4.dp));Text("Finish (${pages})")}
             }
         }
+    }
+    if(showCrop && bmp!=null) {
+        ManualCropDialog(bmp!!, onDismiss={showCrop=false}, onApply={cropped->bmp=cropped;showCrop=false})
     }
 }
 
@@ -598,6 +659,7 @@ fun OcrScreen(onBack:()->Unit){
     val c=LocalContext.current
     var result by remember{mutableStateOf("")}
     var loading by remember{mutableStateOf(false)}
+    var cameraMode by remember{mutableStateOf(false)}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri:Uri?->
         if(uri==null)return@rememberLauncherForActivityResult
         loading=true
@@ -618,6 +680,7 @@ fun OcrScreen(onBack:()->Unit){
     Scaffold(topBar={TopAppBar(title={Text("OCR Reader")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
         Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Button(onClick={picker.launch(arrayOf("image/*","application/pdf"))}){Text("Select Image")}
+            Button(onClick={cameraMode=true}){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(6.dp));Text("Camera") }
             if(loading)CircularProgressIndicator()
             OutlinedTextField(result,{result=it},Modifier.fillMaxWidth().weight(1f),label={Text("Editable OCR text")})
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
@@ -630,6 +693,17 @@ fun OcrScreen(onBack:()->Unit){
                 }){Text("Excel")}
             }
         }
+    }
+    if(cameraMode){
+        CameraCapture(Modifier.fillMaxSize(), onCaptured={file->
+            cameraMode=false; loading=true
+            val source=InputImage.fromFilePath(c,Uri.fromFile(file))
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(source).addOnSuccessListener{en->
+                if(SettingsStore.hindiOcr(c)){
+                    TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build()).process(source).addOnSuccessListener{hi->result=if(hi.text.isNotBlank())hi.text else en.text;loading=false}.addOnFailureListener{result=en.text;loading=false}
+                } else { result=en.text;loading=false }
+            }.addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
+        })
     }
 }
 
@@ -659,6 +733,67 @@ fun ConvertScreen(onBack:()->Unit){
             Text("Note: complex tables, fonts and exact page geometry are reconstructed approximately; 100% pixel-identical Word/Excel conversion is not guaranteed.")
         }
     }
+}
+
+@Composable
+fun ManualCropDialog(source: Bitmap, onDismiss:()->Unit, onApply:(Bitmap)->Unit){
+    var left by remember{mutableFloatStateOf(0f)}
+    var top by remember{mutableFloatStateOf(0f)}
+    var right by remember{mutableFloatStateOf(1f)}
+    var bottom by remember{mutableFloatStateOf(1f)}
+    AlertDialog(onDismissRequest=onDismiss,title={Text("Manual Crop")},text={
+        Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
+            Text("Left");Slider(left,{left=it.coerceAtMost(right-0.05f)})
+            Text("Top");Slider(top,{top=it.coerceAtMost(bottom-0.05f)})
+            Text("Right");Slider(right,{right=it.coerceAtLeast(left+0.05f)})
+            Text("Bottom");Slider(bottom,{bottom=it.coerceAtLeast(top+0.05f)})
+        }
+    },confirmButton={Button(onClick={
+        val l=(source.width*left).toInt(); val t=(source.height*top).toInt()
+        val w=(source.width*(right-left)).toInt().coerceAtLeast(1); val h=(source.height*(bottom-top)).toInt().coerceAtLeast(1)
+        onApply(Bitmap.createBitmap(source,l,t,w,h))
+    }){Text("Apply")}},dismissButton={TextButton(onClick=onDismiss){Text("Cancel")}})
+}
+
+fun copyUriToCache(c: android.content.Context, uri: Uri, name: String): File? = runCatching {
+    val f=File(c.cacheDir,name)
+    c.contentResolver.openInputStream(uri)?.use{input->f.outputStream().use{input.copyTo(it)}}
+    f
+}.getOrNull()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun IdScanScreen(onBack:()->Unit,onSaved:()->Unit){
+    val c=LocalContext.current
+    var front by remember{mutableStateOf<File?>(null)}
+    var back by remember{mutableStateOf<File?>(null)}
+    var side by remember{mutableStateOf("front")}
+    var camera by remember{mutableStateOf(false)}
+    var name by remember{mutableStateOf("ID Document")}
+    var showName by remember{mutableStateOf(false)}
+    val gallery=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){u->if(u.size>=2){front=copyUriToCache(c,u[0],"id_front_${System.currentTimeMillis()}.jpg");back=copyUriToCache(c,u[1],"id_back_${System.currentTimeMillis()}.jpg")}}
+    if(camera){
+        CameraCapture(Modifier.fillMaxSize()){f->if(side=="front"){front=f;side="back"}else{back=f;camera=false}}
+        return
+    }
+    Scaffold(topBar={TopAppBar(title={Text("ID Scan")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
+        Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+            Text("ID Scan",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+            Text("Capture front and back. Output is placed on A4 by default.")
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                Button(onClick={side="front";camera=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(5.dp));Text("Front Camera")}
+                Button(onClick={side="back";camera=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(5.dp));Text("Back Camera")}
+            }
+            OutlinedButton(onClick={gallery.launch(arrayOf("image/*"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(8.dp));Text("Select Front + Back from Gallery")}
+            Text(if(front==null)"Front: not ready" else "Front: ✓ ready")
+            Text(if(back==null)"Back: not ready" else "Back: ✓ ready")
+            if(front!=null&&back!=null)Button(onClick={showName=true},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PictureAsPdf,null);Spacer(Modifier.width(8.dp));Text("Create A4 PDF")}
+        }
+    }
+    if(showName)AlertDialog(onDismissRequest={showName=false},title={Text("Save ID PDF")},text={OutlinedTextField(name,{name=it},singleLine=true,label={Text("Document name")})},confirmButton={Button(onClick={
+        val pdf=PdfEngine.createPdf(c.filesDir,listOfNotNull(front,back),SettingsStore.pdfMode(c),SettingsStore.maxMb(c),name.ifBlank{"ID Document"})
+        if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),name.ifBlank{"ID Document"},pdf.absolutePath));Toast.makeText(c,"ID PDF saved",Toast.LENGTH_SHORT).show();showName=false;onSaved()}
+    }){Text("Save")}},dismissButton={TextButton(onClick={showName=false}){Text("Cancel")}})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -730,17 +865,37 @@ fun PdfToolsScreen(onBack:()->Unit){
 @Composable
 fun ViewerScreen(file:File,onBack:()->Unit){
     val c=LocalContext.current
-    Scaffold(topBar={TopAppBar(title={Text(file.name)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally){
-            Text("Saved PDF: ${file.absolutePath}")
-            Spacer(Modifier.height(16.dp))
-            Button(onClick={ShareUtil.share(c,file,"application/pdf")}){Text("Share PDF")}
-            Button(onClick={
-                c.startActivity(Intent(Intent.ACTION_VIEW).apply{
-                    setDataAndType(androidx.core.content.FileProvider.getUriForFile(c,"${c.packageName}.provider",file),"application/pdf")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                })
-            }){Text("Open / Print")}
+    var pageIndex by remember{mutableIntStateOf(0)}
+    var bitmap by remember{mutableStateOf<Bitmap?>(null)}
+    var pageCount by remember{mutableIntStateOf(0)}
+    LaunchedEffect(file){
+        runCatching{
+            val pfd=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY)
+            val renderer=PdfRenderer(pfd); pageCount=renderer.pageCount
+            if(pageCount>0){val p=renderer.openPage(0);val b=Bitmap.createBitmap(p.width*2,p.height*2,Bitmap.Config.ARGB_8888);b.eraseColor(android.graphics.Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);bitmap=b;p.close()}
+            renderer.close();pfd.close()
+        }
+    }
+    fun render(index:Int){
+        runCatching{
+            val pfd=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);val r=PdfRenderer(pfd);val p=r.openPage(index);val b=Bitmap.createBitmap(p.width*2,p.height*2,Bitmap.Config.ARGB_8888);b.eraseColor(android.graphics.Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);bitmap?.recycle();bitmap=b;p.close();r.close();pfd.close();pageIndex=index
+        }
+    }
+    Scaffold(topBar={TopAppBar(title={Text(file.name)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}},actions={
+        IconButton(onClick={ShareUtil.share(c,file,"application/pdf")}){Icon(Icons.Default.Share,null)}
+        IconButton(onClick={runCatching{c.startActivity(Intent(Intent.ACTION_VIEW).apply{setDataAndType(androidx.core.content.FileProvider.getUriForFile(c,"${c.packageName}.provider",file),"application/pdf");addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))}}.onFailure{Toast.makeText(c,"No PDF viewer found",Toast.LENGTH_SHORT).show()})}){Icon(Icons.Default.Print,null)}
+    })}){pad->
+        Column(Modifier.padding(pad).fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally){
+            bitmap?.let{Image(it.asImageBitmap(),"PDF page",Modifier.fillMaxWidth().weight(1f).padding(8.dp))}
+            Row(verticalAlignment=Alignment.CenterVertically){
+                IconButton(enabled=pageIndex>0,onClick={render(pageIndex-1)}){Icon(Icons.Default.ChevronLeft,null)}
+                Text("Page ${if(pageCount==0)0 else pageIndex+1} / $pageCount",fontWeight=FontWeight.SemiBold)
+                IconButton(enabled=pageIndex<pageCount-1,onClick={render(pageIndex+1)}){Icon(Icons.Default.ChevronRight,null)}
+            }
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(bottom=12.dp)){
+                OutlinedButton(onClick={ShareUtil.share(c,file,"application/pdf")}){Text("Share")}
+                Button(onClick={runCatching{c.startActivity(Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_STREAM,androidx.core.content.FileProvider.getUriForFile(c,"${c.packageName}.provider",file));addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)})}.onFailure{Toast.makeText(c,"Share failed",Toast.LENGTH_SHORT).show()}){Text("Send")}
+            }
         }
     }
 }
