@@ -22,9 +22,37 @@ object SettingsStore {
     fun setPdfMode(c: Context, value: PdfEngine.SizeMode) =
         p(c).edit().putString("pdf_mode", value.name).apply()
 
-    fun maxMb(c: Context): Int = p(c).getInt("max_mb", 5).coerceAtLeast(2)
-    fun setMaxMb(c: Context, value: Int) = p(c).edit().putInt("max_mb", value.coerceAtLeast(2)).apply()
+    fun maxSizeChoice(c: Context): String =
+        p(c).getString("max_size", "5 MB") ?: "5 MB"
 
-    fun filter(c: Context): String = p(c).getString("filter", "B&W") ?: "B&W"
-    fun setFilter(c: Context, value: String) = p(c).edit().putString("filter", value).apply()
+    fun setMaxSizeChoice(c: Context, value: String) =
+        p(c).edit().putString("max_size", value).apply()
+
+    fun maxBytes(c: Context): Long = parseSize(maxSizeChoice(c))
+
+    fun maxMb(c: Context): Int = (maxBytes(c) / (1024L * 1024L)).toInt().coerceAtLeast(1)
+    fun setMaxMb(c: Context, value: Int) = setMaxSizeChoice(c, "${value.coerceAtLeast(1)} MB")
+
+    fun paperSize(c: Context): String =
+        p(c).getString("paper_size", "Auto") ?: "Auto"
+
+    fun setPaperSize(c: Context, value: String) =
+        p(c).edit().putString("paper_size", value).apply()
+
+    fun filter(c: Context): String =
+        p(c).getString("filter", "B&W") ?: "B&W"
+
+    fun setFilter(c: Context, value: String) =
+        p(c).edit().putString("filter", value).apply()
+
+    private fun parseSize(value: String): Long = when {
+        value.startsWith("500") -> 500L * 1024L
+        value.startsWith("1 MB") -> 1L * 1024L * 1024L
+        value.startsWith("2 MB") -> 2L * 1024L * 1024L
+        value.startsWith("5 MB") -> 5L * 1024L * 1024L
+        value.startsWith("10 MB") -> 10L * 1024L * 1024L
+        value.startsWith("20 MB") -> 20L * 1024L * 1024L
+        value.startsWith("50 MB") -> 50L * 1024L * 1024L
+        else -> 5L * 1024L * 1024L
+    }
 }
