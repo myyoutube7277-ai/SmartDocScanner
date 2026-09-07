@@ -255,7 +255,7 @@ fun HomeScreen(
             }
 
             items(docs.take(10)) { r ->
-                DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { refresh++ }, onDelete = { refresh++ })
+                DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { }, onDelete = { })
             }
         }
     }
@@ -282,7 +282,7 @@ private fun DocumentCard(r: DocumentRecord, onOpen: () -> Unit, onChanged: () ->
     var rename by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(r.name) }
 
-    Card(Modifier.fillMaxWidth(), onClick = onOpen) {
+    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Icon(Icons.Default.PictureAsPdf, null, Modifier.padding(12.dp))
@@ -387,9 +387,16 @@ fun SettingsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text("Scanning", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             item {
-                SettingsRow("Automatic crop", "Trim document margins after capture", crop) {
-                    crop = it; SettingsStore.setAutoCrop(c, it); changed()
-                }
+                SettingsRow(
+                    "Automatic crop",
+                    "Trim document margins after capture",
+                    crop,
+                    onCheckedChange = { value ->
+                        crop = value
+                        SettingsStore.setAutoCrop(c, value)
+                        changed()
+                    }
+                )
             }
             item {
                 SettingsRow("Default filter", filter, false, onClick = { showFilter = true })
@@ -414,16 +421,30 @@ fun SettingsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
             item { HorizontalDivider() }
             item { Text("OCR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             item {
-                SettingsRow("Hindi / Devanagari OCR", "Recognize Hindi text when available", hindi) {
-                    hindi = it; SettingsStore.setHindiOcr(c, it); changed()
-                }
+                SettingsRow(
+                    "Hindi / Devanagari OCR",
+                    "Recognize Hindi text when available",
+                    hindi,
+                    onCheckedChange = { value ->
+                        hindi = value
+                        SettingsStore.setHindiOcr(c, value)
+                        changed()
+                    }
+                )
             }
             item { HorizontalDivider() }
             item { Text("Appearance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
             item {
-                SettingsRow("Dark theme", "Use dark appearance", dark) {
-                    dark = it; SettingsStore.setDarkTheme(c, it); changed()
-                }
+                SettingsRow(
+                    "Dark theme",
+                    "Use dark appearance",
+                    dark,
+                    onCheckedChange = { value ->
+                        dark = value
+                        SettingsStore.setDarkTheme(c, value)
+                        changed()
+                    }
+                )
             }
             item {
                 Card(Modifier.fillMaxWidth()) {
@@ -555,7 +576,7 @@ fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:()->Unit,pa
             Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 listOf("Color","Gray","B&W","High Contrast").forEach{FilterChip(filter==it,{filter=it;bmp=bmp?.let{x->ScanProcessor.filter(x,it)}},label={Text(it)})}
             }
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),Modifier.padding(top=8.dp)){
+            Row(modifier=Modifier.padding(top=8.dp), horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 OutlinedButton(onClick={bmp=bmp?.let{ScanProcessor.rotate(it)}}){Text("Rotate 90°")}
                 Button(onClick={
                     val out=File(c.cacheDir,"page_${System.currentTimeMillis()}.jpg")
