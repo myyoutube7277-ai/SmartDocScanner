@@ -834,7 +834,8 @@ fun CameraCapture(modifier: Modifier, onCaptured: (File) -> Unit) {
         Button(
             enabled = !busy,
             onClick = {
-                val cap = imageCapture ?: return@Button
+                val cap = imageCapture
+                if (cap != null) {
                 busy = true
                 val f = File(c.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
                 val opts = ImageCapture.OutputFileOptions.Builder(f).build()
@@ -850,6 +851,7 @@ fun CameraCapture(modifier: Modifier, onCaptured: (File) -> Unit) {
                         }
                     }
                 })
+                }
             },
             Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).size(84.dp),
             shape = RoundedCornerShape(50.dp)

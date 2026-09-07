@@ -108,8 +108,8 @@ object PdfEngine {
             drawCard(b, margin + boxW + gap, 78f)
             pdf.finishPage(page)
             FileOutputStream(out).use { pdf.writeTo(it) }
-            out.exists() && out.length() > 0
-        } catch (_: Exception) { false } finally {
+            if (out.exists() && out.length() > 0) out else null
+        } catch (_: Exception) { null } finally {
             pdf.close(); a.recycle(); b.recycle()
         }
     }
