@@ -19,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -381,9 +382,11 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
     var onlyFavorites by remember { mutableStateOf(false) }
     var folderFilter by remember { mutableStateOf("All folders") }
     var folderExpanded by remember { mutableStateOf(false) }
+    var showNewFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
     var listRefresh by remember { mutableIntStateOf(0) }
     val allDocs = remember(refresh, listRefresh) { DocumentStore.all(c) }
-    val folders = remember(allDocs) { listOf("All folders") + allDocs.map { it.folder.trim() }.filter { it.isNotBlank() }.distinct().sorted() }
+    val folders = remember(allDocs, listRefresh) { listOf("All folders") + (FolderStore.all(c) + allDocs.map { it.folder.trim() }).filter { it.isNotBlank() }.distinct().sorted() }
     val docs = remember(allDocs, query, onlyFavorites, folderFilter) {
         allDocs.filter { it.name.contains(query, true) }
             .filter { !onlyFavorites || it.favorite }
@@ -403,6 +406,16 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
                 }
             }
             item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { showNewFolder = true }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.CreateNewFolder, null); Spacer(Modifier.width(6.dp)); Text("New Folder")
+                    }
+                    OutlinedButton(onClick = { folderFilter = "All folders" }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(6.dp)); Text("All Documents")
+                    }
+                }
+            }
+            item {
                 Box(Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick={folderExpanded=true}, modifier=Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.Folder,null); Spacer(Modifier.width(8.dp)); Text(folderFilter); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown,null)
@@ -415,6 +428,20 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
             if (docs.isEmpty()) item { Text("No matching documents") }
             items(docs) { r -> DocumentCard(r, { onOpen(File(r.path)) }, { listRefresh++ }, { listRefresh++ }) }
         }
+    }
+    if (showNewFolder) {
+        AlertDialog(
+            onDismissRequest = { showNewFolder = false },
+            title = { Text("Create folder") },
+            text = { OutlinedTextField(newFolderName, { newFolderName = it }, singleLine = true, label = { Text("Folder name") }) },
+            confirmButton = {
+                Button(onClick = {
+                    if (FolderStore.add(c, newFolderName)) { newFolderName = ""; listRefresh++ }
+                    showNewFolder = false
+                }) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showNewFolder = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -574,18 +601,56 @@ fun ScannerScreen(onBack:()->Unit,onSaved:()->Unit){
     var showName by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("Scanned Document")}
     var folder by remember{mutableStateOf("")}
+    var autoSave by remember{mutableStateOf(true)}
+    var draftId by remember{mutableStateOf<Long?>(null)}
     var showSize by remember{mutableStateOf(false)}
     var showPaper by remember{mutableStateOf(false)}
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){ uris ->
         val added=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"gallery_${System.currentTimeMillis()}_$idx.jpg")}
-        if(added.isNotEmpty()) pages=pages+added
+        if(added.isNotEmpty()) {
+            pages=pages+added
+            if (autoSave) {
+                val draft = PdfEngine.createPdfAuto(c.filesDir, pages, PdfEngine.SizeMode.QUALITY, maxChoice, paperSize, "AutoSaved_Draft")
+                if (draft != null) {
+                    val id = draftId
+                    if (id == null) {
+                        val newId = System.currentTimeMillis(); draftId = newId
+                        DocumentStore.add(c, DocumentRecord(newId, "Auto Saved Draft", draft.absolutePath, folder.trim()))
+                    } else {
+                        DocumentStore.all(c).firstOrNull { it.id == id }?.let { old -> File(old.path).delete(); DocumentStore.update(c, old.copy(path=draft.absolutePath, folder=folder.trim())) }
+                    }
+                }
+            }
+        }
     }
     if(captured!=null){
         ScanEditor(
             file=captured!!,
             onBack={captured=null},
-            onAdd={f->pages=pages+f;captured=null},
-            onFinish={f->pages=pages+f;captured=null;showName=true},
+            onAdd={f->
+                pages=pages+f
+                captured=null
+                if (autoSave) {
+                    val all = pages + f
+                    val draft = PdfEngine.createPdfAuto(c.filesDir, all, PdfEngine.SizeMode.QUALITY, maxChoice, paperSize, "AutoSaved_Draft")
+                    if (draft != null) {
+                        val id = draftId
+                        if (id == null) {
+                            val newId = System.currentTimeMillis()
+                            draftId = newId
+                            DocumentStore.add(c, DocumentRecord(newId, "Auto Saved Draft", draft.absolutePath, folder.trim()))
+                        } else {
+                            val old = DocumentStore.all(c).firstOrNull { it.id == id }
+                            old?.let { File(it.path).delete(); DocumentStore.update(c, it.copy(path = draft.absolutePath, folder = folder.trim())) }
+                        }
+                    }
+                }
+            },
+            onFinish={f->
+                pages=pages+f
+                captured=null
+                showName=true
+            },
             pages=pages.size
         )
         return
@@ -602,12 +667,23 @@ fun ScannerScreen(onBack:()->Unit,onSaved:()->Unit){
                 OutlinedTextField(name,{name=it},label={Text("Document name")},singleLine=true,modifier=Modifier.fillMaxWidth())
                 OutlinedTextField(folder,{folder=it},label={Text("Folder (optional)")},singleLine=true,modifier=Modifier.fillMaxWidth(),placeholder={Text("e.g. Office / 2026")})
                 Text("${pages.size} page(s) • ${SettingsStore.paperSize(c)} • ${if(mode==PdfEngine.SizeMode.QUALITY)"Quality" else maxChoice}",style=MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Text("Auto save draft", Modifier.weight(1f))
+                    Switch(autoSave, { autoSave = it })
+                }
             }},
             confirmButton={Button(onClick={
                 val finalName=name.trim().ifBlank{"Scanned Document"}
                 val pdf=PdfEngine.createPdfAuto(c.filesDir,pages,mode,maxChoice,paperSize,finalName)
                 if(pdf!=null){
+                    draftId?.let { id ->
+                        DocumentStore.all(c).firstOrNull { it.id == id }?.let { draft ->
+                            File(draft.path).delete()
+                            DocumentStore.delete(c, draft.copy(path = ""))
+                        }
+                    }
                     DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),finalName,pdf.absolutePath,folder.trim()))
+                    draftId=null
                     Toast.makeText(c,"PDF saved",Toast.LENGTH_SHORT).show();showName=false;onSaved()
                 } else Toast.makeText(c,"Could not create PDF within selected size",Toast.LENGTH_LONG).show()
             }){Text("Save")}},
@@ -622,8 +698,31 @@ fun ScannerScreen(onBack:()->Unit,onSaved:()->Unit){
                 Button(onClick={if(pages.isNotEmpty() || captured!=null)showName=true},modifier=Modifier.weight(1f)){Text("Finish (${pages.size + if(captured!=null)1 else 0})")}
             }
             Row(Modifier.padding(horizontal=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={showPaper=true},modifier=Modifier.weight(1f)){Text("Paper: ${paperSize}");Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
+                OutlinedButton(onClick={showPaper=true},modifier=Modifier.weight(1f)){Text(if(paperSize=="Auto") "Paper: Auto Detect" else "Paper: ${paperSize}");Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
                 OutlinedButton(onClick={showSize=true},modifier=Modifier.weight(1f)){Text(if(mode==PdfEngine.SizeMode.QUALITY)"Quality Based" else maxChoice);Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
+            }
+            if (pages.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(pages.size) { index ->
+                        val pageFile = pages[index]
+                        Card {
+                            Column(Modifier.width(120.dp).padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                ScanProcessor.decode(pageFile)?.let { preview ->
+                                    Image(preview.asImageBitmap(), "Page ${index + 1}", Modifier.fillMaxWidth().height(140.dp))
+                                }
+                                Text("Page ${index + 1}", style = MaterialTheme.typography.labelSmall)
+                                Row {
+                                    IconButton(enabled = index > 0, onClick = { pages = pages.toMutableList().apply { add(index - 1, removeAt(index)) } }) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
+                                    IconButton(onClick = { pages = pages.toMutableList().apply { removeAt(index) } }) { Icon(Icons.Default.Delete, "Delete page") }
+                                    IconButton(enabled = index < pages.lastIndex, onClick = { pages = pages.toMutableList().apply { add(index + 1, removeAt(index)) } }) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Text("Pages queued: ${pages.size}",Modifier.padding(16.dp))
         }
@@ -872,34 +971,49 @@ fun BarcodeScreen(onBack:()->Unit){
 @Composable
 fun PdfToolsScreen(onBack:()->Unit){
     val c=LocalContext.current
-    var message by remember{mutableStateOf("")}
-    val images=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
+    var message by remember{mutableStateOf("Choose a PDF tool")}
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
         if(uris.isNotEmpty()){
-            val fs=uris.mapIndexedNotNull{idx,u->
-                runCatching{
-                    val f=File(c.cacheDir,"img_${System.currentTimeMillis()}_$idx.jpg")
-                    c.contentResolver.openInputStream(u)?.use{ins->f.outputStream().use{ins.copyTo(it)}}
-                    f
-                }.getOrNull()
-            }
-            val pdf=PdfEngine.createPdf(c.filesDir,fs,PdfEngine.SizeMode.QUALITY,2,"ImagesToPDF")
-            if(pdf!=null){message="Created: ${pdf.name}";ShareUtil.share(c,pdf,"application/pdf")}
+            val fs=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"pdf_image_${System.currentTimeMillis()}_$idx.jpg")}
+            val pdf=PdfEngine.createPdfAuto(c.filesDir,fs,SettingsStore.pdfMode(c),SettingsStore.maxSizeChoice(c),SettingsStore.paperSize(c),"Images_to_PDF")
+            if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Images to PDF",pdf.absolutePath));message="Created ${pdf.name}";ShareUtil.share(c,pdf,"application/pdf")}
         }
     }
-    val pdfPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+    val pdfMulti=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
+        if(uris.size>=2){
+            val fs=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"merge_${System.currentTimeMillis()}_$idx.pdf")}
+            val out=PdfEngine.mergePdfs(c.filesDir,fs,"Merged_Document")
+            if(out!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Merged Document",out.absolutePath));message="Merged ${fs.size} PDFs";ShareUtil.share(c,out,"application/pdf")}else message="Select at least 2 valid PDFs"
+        } else message="Select at least 2 PDFs to merge"
+    }
+    val onePdf=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri==null)return@rememberLauncherForActivityResult
-        val f=File(c.cacheDir,"source_${System.currentTimeMillis()}.pdf")
-        c.contentResolver.openInputStream(uri)?.use{ins->f.outputStream().use{ins.copyTo(it)}}
-        val outs=PdfEngine.pdfToImages(f,c.filesDir)
-        message="Exported ${outs.size} pages"
+        val f=copyUriToCache(c,uri,"pdf_tool_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
+        val outs=PdfEngine.splitPdf(c.filesDir,f)
+        outs.forEachIndexed{idx,out->DocumentStore.add(c,DocumentRecord(System.currentTimeMillis()+idx,"${f.nameWithoutExtension} Page ${idx+1}",out.absolutePath))}
+        message="Split into ${outs.size} page PDFs"
+    }
+    val compressPdf=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri==null)return@rememberLauncherForActivityResult
+        val f=copyUriToCache(c,uri,"compress_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
+        val out=PdfEngine.compressPdf(c.filesDir,f,"Compressed_${f.nameWithoutExtension}")
+        if(out!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Compressed PDF",out.absolutePath));message="Compressed PDF created";ShareUtil.share(c,out,"application/pdf")}else message="Compression failed"
+    }
+    val pageExport=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri==null)return@rememberLauncherForActivityResult
+        val f=copyUriToCache(c,uri,"export_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
+        val outs=PdfEngine.pdfToImages(f,c.filesDir); message="Exported ${outs.size} pages as images"
     }
     Scaffold(topBar={TopAppBar(title={Text("PDF Tools")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-            Button(onClick={images.launch(arrayOf("image/*"))}){Text("Images → PDF")}
-            Button(onClick={pdfPicker.launch(arrayOf("application/pdf"))}){Text("PDF → Images")}
-            Button(onClick={pdfPicker.launch(arrayOf("application/pdf"))}){Text("Open PDF / Export Pages")}
-            Text(message)
-            Text("PDF merge/split/password/compression hooks can be added with the included PDFBox dependency; the core scanner/PDF/OCR modules are ready.")
+        LazyColumn(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+            item{Text("PDF tools",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
+            item{Text("All common actions are available from this page.",style=MaterialTheme.typography.bodySmall)}
+            item{Button(onClick={imagePicker.launch(arrayOf("image/*"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(8.dp));Text("Images → PDF")}}
+            item{Button(onClick={pdfMulti.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Merge,null);Spacer(Modifier.width(8.dp));Text("Merge Multiple PDFs")}}
+            item{Button(onClick={onePdf.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.ContentCut,null);Spacer(Modifier.width(8.dp));Text("Split PDF into Pages")}}
+            item{Button(onClick={compressPdf.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Compress,null);Spacer(Modifier.width(8.dp));Text("Compress PDF")}}
+            item{OutlinedButton(onClick={pageExport.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Image,null);Spacer(Modifier.width(8.dp));Text("PDF → Images")}}
+            item{Card(Modifier.fillMaxWidth()){Text(message,Modifier.padding(16.dp))}}
         }
     }
 }
@@ -971,7 +1085,10 @@ fun ViewerScreen(file:File,onBack:()->Unit){
         confirmButton={Button(onClick={
             val clean=newName.trim().ifBlank{file.nameWithoutExtension}
             val renamed=File(file.parentFile, "$clean.pdf")
-            if(file.renameTo(renamed)) Toast.makeText(c,"Renamed",Toast.LENGTH_SHORT).show() else Toast.makeText(c,"Rename failed",Toast.LENGTH_SHORT).show()
+            if(file.renameTo(renamed)) {
+                DocumentStore.all(c).firstOrNull { it.path == file.absolutePath }?.let { DocumentStore.update(c, it.copy(name = clean, path = renamed.absolutePath)) }
+                Toast.makeText(c,"Renamed",Toast.LENGTH_SHORT).show()
+            } else Toast.makeText(c,"Rename failed",Toast.LENGTH_SHORT).show()
             showRename=false
         }){Text("Save")}},
         dismissButton={TextButton(onClick={showRename=false}){Text("Cancel")}}
@@ -979,8 +1096,8 @@ fun ViewerScreen(file:File,onBack:()->Unit){
     if(showDelete) AlertDialog(
         onDismissRequest={showDelete=false}, title={Text("Delete PDF?")}, text={Text("This document will be removed from SmartDoc.")},
         confirmButton={Button(onClick={
-            DocumentStore.all(c).firstOrNull{it.path==file.absolutePath}?.let{DocumentStore.delete(c,it)}
-            file.delete(); showDelete=false; onBack()
+            DocumentStore.all(c).firstOrNull{it.path==file.absolutePath}?.let{DocumentStore.delete(c,it)} ?: file.delete()
+            showDelete=false; onBack()
         }){Text("Delete")}},
         dismissButton={TextButton(onClick={showDelete=false}){Text("Cancel")}}
     )

@@ -50,6 +50,10 @@ object DocumentStore {
         save(c, all(c).filterNot { it.id == r.id })
     }
 
+    fun moveToFolder(c: Context, r: DocumentRecord, folder: String) {
+        update(c, r.copy(folder = folder.trim()))
+    }
+
     private fun save(c: Context, list: List<DocumentRecord>) {
         val a = JSONArray()
         list.forEach {

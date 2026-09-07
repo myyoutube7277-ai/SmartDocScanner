@@ -1,37 +1,19 @@
-# SmartDoc Scanner — Final APK-ready project
+# SmartDoc Scanner – Professional V4
 
-यह Android Studio project है। इसे Windows PC पर Android Studio में खोलकर APK बनाया जा सकता है।
+Integrated professional scanner workflow based on the working SmartDocScanner project.
 
 ## Included
-- CameraX document scanner
-- automatic document boundary detection + perspective normalization
-- manual/automatic processing workflow
-- rotate, color, grayscale, B&W, high contrast
-- multi-page PDF queue
-- Quality Based output (default)
-- Maximum Size output, minimum 2 MB, with size verification/reduction attempts
-- Hindi (Devanagari) + English OCR
-- editable OCR result
-- OCR → DOCX
-- OCR → XLSX with basic row/column heuristics
-- QR / barcode camera scanner
-- PDF → images
-- images → PDF
-- local document library, search, delete
-- Android share/open/print hand-off
+- Camera and multi-image gallery scanning
+- Multi-page scan editor with manual crop, rotate, filters, add page and Finish & Save
+- B&W fresh-print default
+- PDF paper size: Auto, A4, A5, Letter, Legal
+- PDF maximum-size dropdown: 500 KB, 1 MB, 2 MB, 5 MB, 10 MB, 20 MB, 50 MB
+- Save dialog with document name and folder
+- ID scan front/back with A4 output
+- OCR from camera and gallery with Hindi/Devanagari option
+- In-app PDF viewer with page navigation, OCR, page export, Word visual export, Excel export, rename, share and delete
+- Documents search, favorites and folder filter
+- Material 3 professional UI
 
-## Important limitation
-Photo से Word/Excel में **100% pixel-identical** editable reconstruction सामान्य OCR से guarantee नहीं की जा सकती। यह project text और basic table/column structure को editable format में reconstruct करता है; complex formatting, fonts, merged cells, stamps/signatures आदि में manual correction लग सकती है।
-
-## Build
-1. Android Studio install करें।
-2. यह folder खोलें।
-3. Gradle sync पूरा होने दें।
-4. Build → Generate App Bundles or APKs → Generate APKs.
-5. Debug APK `app/build/outputs/apk/debug/app-debug.apk` में मिलेगा।
-
-इस environment में Android SDK/Gradle build tool उपलब्ध न होने के कारण APK को यहाँ compile/test नहीं किया गया है।
-
-
-## Build configuration repaired
-The Gradle workflow targets the nested SmartScanPro_GitHub_Build project directory, uses Java 17, Android 35, Gradle 8.9, and runs Kotlin compilation in-process to reduce daemon-related failures.
+## Important conversion note
+A scanned PDF is fundamentally an image. Exact, fully editable reconstruction of arbitrary fonts, tables and geometry is not guaranteed by an offline Android-only implementation. The Word visual export preserves the rendered page as an image; OCR/text export remains editable. A true layout-preserving editable DOCX/XLSX engine would require a substantially larger document-layout pipeline.

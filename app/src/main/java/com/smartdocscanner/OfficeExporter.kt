@@ -64,11 +64,39 @@ object OfficeExporter {
         return f
     }
 
-    /** A spreadsheet fallback that places each rendered PDF page as an image on its own sheet-like area. */
+    /** Creates an XLSX workbook with each rendered PDF page embedded as a full-size image on a separate worksheet. */
     fun xlsxFromImages(context: Context, title: String, images: List<File>): File {
-        // Keep the workbook valid and easy to open; pages are listed with file references.
-        val text=images.mapIndexed { i, f -> "Page ${i+1}\t${f.name}" }.joinToString("\n")
-        return xlsx(context,"${title}_visual",text)
+        val f = File(context.filesDir, "${safe(title)}_visual.xlsx")
+        ZipOutputStream(FileOutputStream(f)).use { z ->
+            val sheetEntries = StringBuilder()
+            val workbookRels = StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">")
+            val contentOverrides = StringBuilder()
+            images.forEachIndexed { i, img ->
+                val n = i + 1
+                sheetEntries.append("<sheet name=\"Page $n\" sheetId=\"$n\" r:id=\"rId$n\"/>")
+                workbookRels.append("<Relationship Id=\"rId$n\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet$n.xml\"/>")
+                contentOverrides.append("<Override PartName=\"/xl/worksheets/sheet$n.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/drawings/drawing$n.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawing+xml\"/>")
+            }
+            workbookRels.append("</Relationships>")
+            put(z, "[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>$contentOverrides</Types>""")
+            put(z, "_rels/.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>""")
+            put(z, "xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>""" + sheetEntries + """</sheets></workbook>""")
+            put(z, "xl/_rels/workbook.xml.rels", workbookRels.toString())
+            images.forEachIndexed { i, img ->
+                val n = i + 1
+                put(z, "xl/worksheets/sheet$n.xml", """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData/><drawing r:id="rId1"/></worksheet>""")
+                // Each sheet gets its own drawing relationship.
+                put(z, "xl/drawings/drawing$n.xml", """<?xml version="1.0" encoding="UTF-8"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="10058400" cy="14274800"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="$n" name="Page $n"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rImg$n" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>""")
+                put(z, "xl/drawings/_rels/drawing$n.xml.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rImg$n" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image$n.jpg"/></Relationships>""")
+                z.putNextEntry(ZipEntry("xl/media/image$n.jpg")); img.inputStream().use { it.copyTo(z) }; z.closeEntry()
+            }
+            // Fix sheet drawing targets to the sheet-specific drawings.
+            images.forEachIndexed { i, _ ->
+                val n=i+1
+                put(z, "xl/worksheets/_rels/sheet$n.xml.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../../drawings/drawing$n.xml"/></Relationships>""")
+            }
+        }
+        return f
     }
 
     private fun column(i:Int):String { var n=i+1; var s=""; while(n>0){val r=(n-1)%26;s=('A'.code+r).toChar()+s;n=(n-1)/26};return s }
