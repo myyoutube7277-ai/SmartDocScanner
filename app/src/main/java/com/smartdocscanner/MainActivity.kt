@@ -853,7 +853,7 @@ fun CameraCapture(modifier: Modifier, onCaptured: (File) -> Unit) {
                 })
                 }
             },
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).size(84.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).size(84.dp),
             shape = RoundedCornerShape(50.dp)
         ) {
             Icon(Icons.Default.CameraAlt, "Capture", Modifier.size(34.dp))
