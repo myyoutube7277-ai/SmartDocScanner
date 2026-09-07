@@ -121,7 +121,8 @@ fun HomeScreen(
     val c = LocalContext.current
     var query by remember { mutableStateOf("") }
     var selectedTab by remember { mutableIntStateOf(0) }
-    val docs = remember(refresh, query, selectedTab) {
+    var listRefresh by remember { mutableIntStateOf(0) }
+    val docs = remember(refresh, listRefresh, query, selectedTab) {
         DocumentStore.all(c)
             .filter { it.name.contains(query, true) }
             .filter { selectedTab == 0 || it.favorite }
@@ -255,7 +256,7 @@ fun HomeScreen(
             }
 
             items(docs.take(10)) { r ->
-                DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { }, onDelete = { })
+                DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { listRefresh++ }, onDelete = { listRefresh++ })
             }
         }
     }
@@ -344,7 +345,8 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
     val c = LocalContext.current
     var query by remember { mutableStateOf("") }
     var onlyFavorites by remember { mutableStateOf(false) }
-    val docs = remember(refresh, query, onlyFavorites) {
+    var listRefresh by remember { mutableIntStateOf(0) }
+    val docs = remember(refresh, listRefresh, query, onlyFavorites) {
         DocumentStore.all(c).filter { it.name.contains(query, true) }.filter { !onlyFavorites || it.favorite }
     }
     Scaffold(topBar = {
@@ -361,7 +363,7 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
                 }
             }
             if (docs.isEmpty()) item { Text("No matching documents") }
-            items(docs) { r -> DocumentCard(r, { onOpen(File(r.path)) }, {}, {}) }
+            items(docs) { r -> DocumentCard(r, { onOpen(File(r.path)) }, { listRefresh++ }, { listRefresh++ }) }
         }
     }
 }
@@ -601,12 +603,17 @@ fun OcrScreen(onBack:()->Unit){
         loading=true
         val source=InputImage.fromFilePath(c,uri)
         val a=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val d=TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
-        a.process(source).addOnSuccessListener{en->
-            d.process(source).addOnSuccessListener{hi->
-                result=(if(hi.text.isNotBlank())hi.text else en.text);loading=false
-            }.addOnFailureListener{result=en.text;loading=false}
-        }.addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
+        if (SettingsStore.hindiOcr(c)) {
+            val d=TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+            a.process(source).addOnSuccessListener{en->
+                d.process(source).addOnSuccessListener{hi->
+                    result=(if(hi.text.isNotBlank())hi.text else en.text);loading=false
+                }.addOnFailureListener{result=en.text;loading=false}
+            }.addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
+        } else {
+            a.process(source).addOnSuccessListener{en-> result=en.text; loading=false}
+                .addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
+        }
     }
     Scaffold(topBar={TopAppBar(title={Text("OCR Reader")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
         Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
