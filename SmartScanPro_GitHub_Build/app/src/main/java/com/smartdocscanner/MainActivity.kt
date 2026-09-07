@@ -110,7 +110,7 @@ fun HomeScreen(onScan:()->Unit,onOcr:()->Unit,onConvert:()->Unit,onBarcode:()->U
 
 @Composable
 fun RowScope.FeatureButton(text:String,icon:androidx.compose.ui.graphics.vector.ImageVector,onClick:()->Unit){
-    OutlinedButton(onClick,onClick,Modifier.weight(1f)){Icon(icon,null);Spacer(Modifier.width(4.dp));Text(text)}
+    OutlinedButton(     onClick = onClick,     modifier = Modifier.weight(1f) ) {     Icon(icon, null)     Spacer(Modifier.width(4.dp))     Text(text) }){Icon(icon,null);Spacer(Modifier.width(4.dp));Text(text)}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
