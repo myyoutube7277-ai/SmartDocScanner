@@ -3,28 +3,94 @@ package com.smartdocscanner
 import android.content.Context
 
 object SettingsStore {
+
     private const val PREF = "smartdoc_settings"
-    private fun p(c: Context) = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    fun darkTheme(c: Context): Boolean = p(c).getBoolean("dark_theme", false)
-    fun setDarkTheme(c: Context, value: Boolean) = p(c).edit().putBoolean("dark_theme", value).apply()
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    fun autoCrop(c: Context): Boolean = p(c).getBoolean("auto_crop", true)
-    fun setAutoCrop(c: Context, value: Boolean) = p(c).edit().putBoolean("auto_crop", value).apply()
+    // Dark Theme
+    fun darkTheme(context: Context): Boolean {
+        return prefs(context).getBoolean("dark_theme", false)
+    }
 
-    fun hindiOcr(c: Context): Boolean = p(c).getBoolean("hindi_ocr", true)
-    fun setHindiOcr(c: Context, value: Boolean) = p(c).edit().putBoolean("hindi_ocr", value).apply()
+    fun setDarkTheme(context: Context, value: Boolean) {
+        prefs(context).edit()
+            .putBoolean("dark_theme", value)
+            .apply()
+    }
 
-    fun pdfMode(c: Context): PdfEngine.SizeMode =
-        if (p(c).getString("pdf_mode", "QUALITY") == "MAXIMUM") PdfEngine.SizeMode.MAXIMUM
-        else PdfEngine.SizeMode.QUALITY
+    // Automatic Crop
+    fun autoCrop(context: Context): Boolean {
+        return prefs(context).getBoolean("auto_crop", true)
+    }
 
-    fun setPdfMode(c: Context, value: PdfEngine.SizeMode) =
-        p(c).edit().putString("pdf_mode", value.name).apply()
+    fun setAutoCrop(context: Context, value: Boolean) {
+        prefs(context).edit()
+            .putBoolean("auto_crop", value)
+            .apply()
+    }
 
-    fun maxMb(c: Context): Int = p(c).getInt("max_mb", 5).coerceAtLeast(2)
-    fun setMaxMb(c: Context, value: Int) = p(c).edit().putInt("max_mb", value.coerceAtLeast(2)).apply()
+    // Hindi / Devanagari OCR
+    fun hindiOcr(context: Context): Boolean {
+        return prefs(context).getBoolean("hindi_ocr", true)
+    }
 
-    fun filter(c: Context): String = p(c).getString("filter", "Color") ?: "Color"
-    fun setFilter(c: Context, value: String) = p(c).edit().putString("filter", value).apply()
+    fun setHindiOcr(context: Context, value: Boolean) {
+        prefs(context).edit()
+            .putBoolean("hindi_ocr", value)
+            .apply()
+    }
+
+    // PDF Size Mode
+    fun pdfMode(context: Context): PdfEngine.SizeMode {
+        return if (
+            prefs(context).getString("pdf_mode", "QUALITY") == "MAXIMUM"
+        ) {
+            PdfEngine.SizeMode.MAXIMUM
+        } else {
+            PdfEngine.SizeMode.QUALITY
+        }
+    }
+
+    fun setPdfMode(
+        context: Context,
+        value: PdfEngine.SizeMode
+    ) {
+        prefs(context).edit()
+            .putString("pdf_mode", value.name)
+            .apply()
+    }
+
+    // Maximum PDF Size
+    fun maxMb(context: Context): Int {
+        return prefs(context)
+            .getInt("max_mb", 5)
+            .coerceAtLeast(2)
+    }
+
+    fun setMaxMb(
+        context: Context,
+        value: Int
+    ) {
+        prefs(context).edit()
+            .putInt("max_mb", value.coerceAtLeast(2))
+            .apply()
+    }
+
+    // Default Image Filter
+    fun filter(context: Context): String {
+        return prefs(context)
+            .getString("filter", "Color")
+            ?: "Color"
+    }
+
+    fun setFilter(
+        context: Context,
+        value: String
+    ) {
+        prefs(context).edit()
+            .putString("filter", value)
+            .apply()
+    }
 }
