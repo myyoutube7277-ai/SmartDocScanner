@@ -65,10 +65,10 @@ fun SmartDocApp() {
 
     MaterialTheme(
         colorScheme = if (dark) darkColorScheme(
-            primary = Color(0xFFFFD21F),
-            onPrimary = Color(0xFF171717),
-            secondary = Color(0xFFFFB800),
-            tertiary = Color(0xFFFFD95A),
+            primary = Color(0xFF27E0B3),
+            onPrimary = Color(0xFF06110F),
+            secondary = Color(0xFF8B6CFF),
+            tertiary = Color(0xFF4DB6FF),
             background = Color(0xFF07090C),
             surface = Color(0xFF11151A),
             surfaceVariant = Color(0xFF1A2027)
@@ -94,6 +94,7 @@ fun SmartDocApp() {
                 onIdScan = { screen = "idscan" },
                 onSettings = { screen = "settings" },
                 onDocuments = { screen = "documents" },
+                onHelp = { Toast.makeText(c, "Help & Support is coming soon", Toast.LENGTH_SHORT).show() },
                 refresh = refresh,
                 onOpen = { selectedFile = it; screen = "viewer" }
             )
@@ -131,6 +132,7 @@ fun HomeScreen(
     onIdScan: () -> Unit,
     onSettings: () -> Unit,
     onDocuments: () -> Unit,
+    onHelp: () -> Unit,
     refresh: Int,
     onOpen: (File) -> Unit
 ) {
@@ -150,152 +152,95 @@ fun HomeScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var listRefresh by remember { mutableIntStateOf(0) }
     val docs = remember(refresh, listRefresh, query, selectedTab) {
-        DocumentStore.all(c)
-            .filter { it.name.contains(query, true) }
-            .filter { selectedTab == 0 || it.favorite }
+        DocumentStore.all(c).filter { it.name.contains(query, true) }.filter { selectedTab == 0 || it.favorite }
     }
 
     Scaffold(
+        containerColor = Color(0xFF05080C),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("SmartDoc", fontWeight = FontWeight.Bold)
-                        Text("Document Scanner", style = MaterialTheme.typography.labelSmall)
+            Column(Modifier.fillMaxWidth().background(Color(0xFF05080C)).padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDocuments) { Icon(Icons.Default.Menu, "Menu", tint = Color.White) }
+                    Column(Modifier.weight(1f)) {
+                        Text("Smart", color = Color.White, fontSize = MaterialTheme.typography.headlineSmall.fontSize, fontWeight = FontWeight.Bold)
+                        Text("DocScanner", color = Color(0xFF27E0B3), fontSize = MaterialTheme.typography.headlineSmall.fontSize, fontWeight = FontWeight.Bold)
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDocuments) {
-                        Icon(Icons.Default.Folder, "Documents")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, "Settings")
-                    }
+                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings", tint = Color(0xFF9DB0C2)) }
                 }
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Default.Home, null) },
-                    label = { Text("Home") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onDocuments,
-                    icon = { Icon(Icons.Default.Folder, null) },
-                    label = { Text("Documents") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onSettings,
-                    icon = { Icon(Icons.Default.Settings, null) },
-                    label = { Text("Settings") }
-                )
+                Text("Scan  •  Convert  •  Organize  •  Share", color = Color(0xFFB6C3CF), style = MaterialTheme.typography.labelMedium)
+                Text("Your documents, our smart solution", color = Color(0xFF718294), style = MaterialTheme.typography.labelSmall)
             }
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onScan,
-                icon = { Icon(Icons.Default.DocumentScanner, null) },
-                text = { Text("Scan") }
-            )
+        bottomBar = {
+            NavigationBar(containerColor = Color(0xFF0B1117)) {
+                NavigationBarItem(true, {}, { Icon(Icons.Default.Home, null) }, label = { Text("Home") })
+                NavigationBarItem(false, onDocuments, { Icon(Icons.Default.Folder, null) }, label = { Text("My Files") })
+                NavigationBarItem(false, onSettings, { Icon(Icons.Default.Settings, null) }, label = { Text("Settings") })
+            }
         }
     ) { pad ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 100.dp)
+            Modifier.fillMaxSize().background(Color(0xFF05080C)).padding(pad).padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 18.dp)
         ) {
             item {
                 OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    placeholder = { Text("Search documents") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    trailingIcon = if (query.isNotEmpty()) {
-                        { IconButton(onClick = { query = "" }) { Icon(Icons.Default.Clear, null) } }
-                    } else null
+                    value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    shape = RoundedCornerShape(18.dp), placeholder = { Text("Search documents", color = Color(0xFF718294)) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Color(0xFF27E0B3)) },
+                    trailingIcon = if (query.isNotEmpty()) { { IconButton({ query = "" }) { Icon(Icons.Default.Clear, null) } } } else null,
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color(0xFF1D2A35), focusedBorderColor = Color(0xFF27E0B3), unfocusedContainerColor = Color(0xFF0C131A), focusedContainerColor = Color(0xFF0C131A))
                 )
             }
-
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("Scan documents professionally", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                        Text("Capture, enhance, save as PDF and extract text.")
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.CameraAlt, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Scan Document")
-                        }
+                Card(onClick = onScan, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF27E0B3)), shape = RoundedCornerShape(22.dp)) {
+                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF06110F)) { Icon(Icons.Default.CameraAlt, null, Modifier.padding(13.dp), tint = Color(0xFF27E0B3)) }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) { Text("Scan Document", color = Color(0xFF06110F), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge); Text("Auto Capture • Auto Crop • HD Scan", color = Color(0xFF14362F), style = MaterialTheme.typography.labelSmall) }
+                        Icon(Icons.Default.ChevronRight, null, tint = Color(0xFF06110F))
                     }
                 }
             }
-
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery Scan")
-                    }
-                    OutlinedButton(onClick = onIdScan, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.CreditCard, null); Spacer(Modifier.width(6.dp)); Text("ID Scan")
-                    }
-                }
-            }
-
-            item { Text("Tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ToolCard("OCR", "Hindi + English", Icons.Default.TextFields, onOcr, Modifier.weight(1f))
-                    ToolCard("Convert", "Image to Office", Icons.Default.Description, onConvert, Modifier.weight(1f))
-                }
-            }
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ToolCard("PDF Tools", "Images / PDF", Icons.Default.PictureAsPdf, onPdf, Modifier.weight(1f))
-                    ToolCard("QR / Barcode", "Scan instantly", Icons.Default.QrCodeScanner, onBarcode, Modifier.weight(1f))
-                }
-            }
-
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                HomeActionCard("Gallery to PDF", Icons.Default.PhotoLibrary, Color(0xFF17C7A1), { gallery.launch(arrayOf("image/*")) }, Modifier.weight(1f))
+                HomeActionCard("ID Card Scan", Icons.Default.CreditCard, Color(0xFF3B82F6), onIdScan, Modifier.weight(1f))
+            }}
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                HomeActionCard("OCR (Text)", Icons.Default.TextFields, Color(0xFF9B6CFF), onOcr, Modifier.weight(1f))
+                HomeActionCard("PDF Tools", Icons.Default.PictureAsPdf, Color(0xFFFF4F5E), onPdf, Modifier.weight(1f))
+            }}
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                HomeActionCard("Image to Word", Icons.Default.Description, Color(0xFF2F80ED), onConvert, Modifier.weight(1f))
+                HomeActionCard("Image to Excel", Icons.Default.GridOn, Color(0xFF19B96B), onConvert, Modifier.weight(1f))
+            }}
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                HomeActionCard("PDF to Images", Icons.Default.Image, Color(0xFFB57BFF), onPdf, Modifier.weight(1f))
+                HomeActionCard("My Files", Icons.Default.Folder, Color(0xFF31B9E8), onDocuments, Modifier.weight(1f))
+            }}
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                HomeActionCard("Settings", Icons.Default.Settings, Color(0xFF91A4B8), onSettings, Modifier.weight(1f))
+                HomeActionCard("Help & Support", Icons.Default.HelpOutline, Color(0xFF4DB6FF), onHelp, Modifier.weight(1f))
+            }}
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${if (selectedTab == 0) "Recent" else "Favorites"}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { selectedTab = if (selectedTab == 0) 1 else 0 }) {
-                        Text(if (selectedTab == 0) "Favorites" else "All")
-                    }
+                    Text(if (selectedTab == 0) "Recent Documents" else "Favorites", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton({ selectedTab = if (selectedTab == 0) 1 else 0 }) { Text(if (selectedTab == 0) "View All" else "Recent", color = Color(0xFF27E0B3)) }
                 }
             }
+            if (docs.isEmpty()) item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1117))) { Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Description, null, tint = Color(0xFF526779), modifier = Modifier.size(42.dp)); Text("No documents yet", color = Color.White); Text("Your scanned PDFs will appear here.", color = Color(0xFF718294), style = MaterialTheme.typography.bodySmall) } } }
+            items(docs.take(10)) { r -> DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { listRefresh++ }, onDelete = { listRefresh++ }) }
+        }
+    }
+}
 
-            if (docs.isEmpty()) {
-                item {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Description, null, Modifier.size(48.dp))
-                            Spacer(Modifier.height(8.dp))
-                            Text(if (selectedTab == 0) "No documents yet" else "No favorite documents")
-                            Text("Your scanned PDFs will appear here.", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-
-            items(docs.take(10)) { r ->
-                DocumentCard(r, onOpen = { onOpen(File(r.path)) }, onChanged = { listRefresh++ }, onDelete = { listRefresh++ })
-            }
+@Composable
+private fun HomeActionCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, accent: Color, onClick: () -> Unit, modifier: Modifier) {
+    Card(onClick = onClick, modifier = modifier.height(78.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF0C141B)), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF182631)), shape = RoundedCornerShape(16.dp)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = RoundedCornerShape(11.dp), color = accent.copy(alpha = 0.18f)) { Icon(icon, null, Modifier.padding(9.dp), tint = accent) }
+            Spacer(Modifier.width(9.dp)); Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2)
         }
     }
 }
