@@ -1078,7 +1078,8 @@ fun ViewerScreen(file:File,onBack:()->Unit){
                 }){Text("Excel")}
             }
         }
-    }    if(showRename) AlertDialog(
+    }
+    if(showRename) AlertDialog(
         onDismissRequest={showRename=false},
         title={Text("Rename PDF")},
         text={OutlinedTextField(newName,{newName=it},singleLine=true,label={Text("Document name")})},

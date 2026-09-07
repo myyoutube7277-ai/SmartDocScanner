@@ -58,7 +58,8 @@ object ScanProcessor {
                 if(g>bestT){bestT=g;bestY=y}
             }
             var bestB=0f; var by=h-2
-            for(y=max(2,h*2/3) until h-2) {
+            val bottomStart = (h * 2 / 3).coerceAtLeast(2)
+            for(y in bottomStart until h-2) {
                 val g=abs(gray(x,y)-gray(x,y-1))
                 if(g>bestB){bestB=g;by=y}
             }
@@ -73,7 +74,8 @@ object ScanProcessor {
                 if(g>bestL){bestL=g;bx=x}
             }
             var bestR=0f; var rx=w-2
-            for(x in max(2,w*2/3) until w-2) {
+            val rightStart = (w * 2 / 3).coerceAtLeast(2)
+            for(x in rightStart until w-2) {
                 val g=abs(gray(x,y)-gray(x-1,y))
                 if(g>bestR){bestR=g;rx=x}
             }
