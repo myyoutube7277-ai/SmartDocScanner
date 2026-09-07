@@ -564,6 +564,7 @@ fun CameraCapture(modifier:Modifier,onCaptured:(File)->Unit){
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:()->Unit,pages:Int){
     val c=LocalContext.current
