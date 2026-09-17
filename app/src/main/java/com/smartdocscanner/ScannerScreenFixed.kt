@@ -49,36 +49,21 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
     var savedFile by remember { mutableStateOf<File?>(null) }
     var filter by remember { mutableStateOf(SettingsStore.filter(context).ifBlank { "B&W" }) }
     var name by remember { mutableStateOf("Scanned Document") }
-
     LaunchedEffect(pages) { if (pages.isNotEmpty()) DraftStore.save(context, pages) }
-
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val added = uris.mapIndexedNotNull { index, uri -> copyUriToCache(context, uri, "gallery_${System.currentTimeMillis()}_$index.jpg") }
         if (added.isNotEmpty()) pages = pages + added
     }
-
     if (captured != null) {
-        ScannerEditFixed(
-            file = captured!!,
-            initialFilter = filter,
-            onFilter = { filter = it; SettingsStore.setFilter(context, it) },
-            onAdd = { file -> pages = pages + file; captured = null },
-            onCancel = { captured = null },
-            onFinish = { file -> pages = pages + file; captured = null; showSave = true }
-        )
+        ScannerEditFixed(file = captured!!, initialFilter = filter, onFilter = { filter = it; SettingsStore.setFilter(context, it) }, onAdd = { file -> pages = pages + file; captured = null }, onCancel = { captured = null }, onFinish = { file -> pages = pages + file; captured = null; showSave = true })
         return
     }
-
-    Scaffold(
-        containerColor = Color(0xFF05080C),
-        topBar = { TopAppBar(title = { Text("Scan Document", color = Color.White) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.Close, null, tint = Color.White) } }) },
-        bottomBar = {
-            Row(Modifier.fillMaxWidth().background(Color(0xFF0A1016)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery") }
-                Button(onClick = { if (pages.isNotEmpty()) showSave = true }, enabled = pages.isNotEmpty(), modifier = Modifier.weight(1f)) { Icon(Icons.Default.Done, null); Spacer(Modifier.width(6.dp)); Text("Finish") }
-            }
+    Scaffold(containerColor = Color(0xFF05080C), topBar = { TopAppBar(title = { Text("Scan Document", color = Color.White) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.Close, null, tint = Color.White) } }) }, bottomBar = {
+        Row(Modifier.fillMaxWidth().background(Color(0xFF0A1016)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery") }
+            Button(onClick = { if (pages.isNotEmpty()) showSave = true }, enabled = pages.isNotEmpty(), modifier = Modifier.weight(1f)) { Icon(Icons.Default.Done, null); Spacer(Modifier.width(6.dp)); Text("Finish") }
         }
-    ) { padding ->
+    }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 SafeCameraPreview(Modifier.fillMaxSize(), onCaptured = { captured = it })
@@ -92,27 +77,13 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
             }
         }
     }
-
-    if (showSave) {
-        AlertDialog(onDismissRequest = { showSave = false }, title = { Text("Save Document") }, text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Document name") }) },
-            confirmButton = { Button(onClick = {
-                val safeName = name.ifBlank { "Scanned Document" }
-                Thread {
-                    val output = PdfEngine.createPdfAuto(context.filesDir, pages, PdfEngine.SizeMode.MAXIMUM, SettingsStore.maxSizeChoice(context), SettingsStore.paperSize(context), safeName)
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        if (output != null) { DocumentStore.add(context, DocumentRecord(System.currentTimeMillis(), safeName, output.absolutePath)); DraftStore.clear(context); showSave = false; savedFile = output }
-                        else Toast.makeText(context, "PDF save failed. Please try again.", Toast.LENGTH_LONG).show()
-                    }
-                }.start()
-            }) { Text("Save PDF") } },
-            dismissButton = { TextButton(onClick = { showSave = false }) { Text("Cancel") } }
-        )
-    }
-    if (savedFile != null) {
-        AlertDialog(onDismissRequest = { savedFile = null; onSaved() }, title = { Text("Saved in My Files") }, text = { Text("PDF has been saved inside SmartDocScanner. You can share the saved file now.") },
-            confirmButton = { Button(onClick = { ShareUtil.share(context, savedFile!!, "application/pdf") }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(5.dp)); Text("Share") } },
-            dismissButton = { TextButton(onClick = { savedFile = null; onSaved() }) { Text("Done") } })
-    }
+    if (showSave) AlertDialog(onDismissRequest = { showSave = false }, title = { Text("Save Document") }, text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Document name") }) },
+        confirmButton = { Button(onClick = {
+            val safeName = name.ifBlank { "Scanned Document" }
+            Thread { val output = PdfEngine.createPdfAuto(context.filesDir, pages, PdfEngine.SizeMode.MAXIMUM, SettingsStore.maxSizeChoice(context), SettingsStore.paperSize(context), safeName); android.os.Handler(android.os.Looper.getMainLooper()).post { if (output != null) { DocumentStore.add(context, DocumentRecord(System.currentTimeMillis(), safeName, output.absolutePath)); DraftStore.clear(context); showSave = false; savedFile = output } else Toast.makeText(context, "PDF save failed. Please try again.", Toast.LENGTH_LONG).show() } }.start()
+        }) { Text("Save PDF") } }, dismissButton = { TextButton(onClick = { showSave = false }) { Text("Cancel") } })
+    if (savedFile != null) AlertDialog(onDismissRequest = { savedFile = null; onSaved() }, title = { Text("Saved in My Files") }, text = { Text("PDF has been saved inside SmartDocScanner. You can share the saved file now.") },
+        confirmButton = { Button(onClick = { ShareUtil.share(context, savedFile!!, "application/pdf") }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(5.dp)); Text("Share") } }, dismissButton = { TextButton(onClick = { savedFile = null; onSaved() }) { Text("Done") } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,25 +96,11 @@ private fun ScannerEditFixed(file: File, initialFilter: String, onFilter: (Strin
     var rotation by remember { mutableIntStateOf(0) }
     var processed by remember(file, base) { mutableStateOf(base) }
     var showCrop by remember { mutableStateOf(false) }
-
-    LaunchedEffect(base, mode, rotation) {
-        base?.let { source ->
-            val filtered = ScanProcessor.filter(source, mode)
-            processed = when ((rotation / 90) % 4) {
-                1 -> ScanProcessor.rotate(filtered)
-                2 -> ScanProcessor.rotate(ScanProcessor.rotate(filtered))
-                3 -> ScanProcessor.rotate(ScanProcessor.rotate(ScanProcessor.rotate(filtered)))
-                else -> filtered
-            }
-        }
-    }
-
+    LaunchedEffect(base, mode, rotation) { base?.let { source -> val filtered = ScanProcessor.filter(source, mode); processed = when ((rotation / 90) % 4) { 1 -> ScanProcessor.rotate(filtered); 2 -> ScanProcessor.rotate(ScanProcessor.rotate(filtered)); 3 -> ScanProcessor.rotate(ScanProcessor.rotate(ScanProcessor.rotate(filtered))); else -> filtered } } }
     Scaffold(containerColor = Color(0xFF05080C), topBar = { TopAppBar(title = { Text("Edit & Enhance", color = Color.White) }, navigationIcon = { IconButton(onClick = onCancel) { Icon(Icons.Default.Close, null, tint = Color.White) } }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
             Box(Modifier.fillMaxWidth().weight(1f).padding(12.dp), contentAlignment = Alignment.Center) { processed?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } }
-            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf("Original", "Color", "B&W", "Clean White")) { label -> FilterChip(selected = mode == label, onClick = { mode = label; onFilter(label) }, label = { Text(label) }) }
-            }
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(listOf("Original", "Color", "B&W", "Clean White")) { label -> FilterChip(selected = mode == label, onClick = { mode = label; onFilter(label) }, label = { Text(label) }) } }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { showCrop = true }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Crop, null); Spacer(Modifier.width(5.dp)); Text("Crop") }
                 OutlinedButton(onClick = { rotation = (rotation + 90) % 360 }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.RotateRight, null); Spacer(Modifier.width(5.dp)); Text("Rotate") }
@@ -168,68 +125,26 @@ private fun saveScannerPage(context: Context, bitmap: Bitmap?): File? = runCatch
 
 @Composable
 private fun SafeCameraPreview(modifier: Modifier, onCaptured: (File) -> Unit) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current; val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
-    var camera by remember { mutableStateOf<Camera?>(null) }
-    var flashOn by remember { mutableStateOf(false) }
-    var ready by remember { mutableStateOf(false) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }; var camera by remember { mutableStateOf<Camera?>(null) }; var flashOn by remember { mutableStateOf(false) }; var ready by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (!granted) Toast.makeText(context, "Camera permission is required for scanning", Toast.LENGTH_LONG).show() }
     val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-
     LaunchedEffect(hasPermission) {
         if (!hasPermission) { permissionLauncher.launch(Manifest.permission.CAMERA); return@LaunchedEffect }
         val future = ProcessCameraProvider.getInstance(context)
-        future.addListener({
-            runCatching {
-                val provider = future.get()
-                val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-                val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(95).build()
-                provider.unbindAll()
-                val bound = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
-                imageCapture = capture; camera = bound; ready = true
-            }.onFailure { Toast.makeText(context, "Camera could not start", Toast.LENGTH_LONG).show() }
-        }, androidx.core.content.ContextCompat.getMainExecutor(context))
+        future.addListener({ runCatching { val provider = future.get(); val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }; val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(95).build(); provider.unbindAll(); val bound = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture); imageCapture = capture; camera = bound; ready = true }.onFailure { Toast.makeText(context, "Camera could not start", Toast.LENGTH_LONG).show() } }, androidx.core.content.ContextCompat.getMainExecutor(context))
     }
-
-    DisposableEffect(camera) {
-        if (camera != null) {
-            previewView.setOnTouchListener { _, event ->
-                if (event.action == android.view.MotionEvent.ACTION_UP) {
-                    runCatching {
-                        val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
-                        camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
-                    }
-                }
-                true
-            }
-        }
-        onDispose { previewView.setOnTouchListener(null) }
-    }
+    DisposableEffect(camera) { if (camera != null) previewView.setOnTouchListener { _, event -> if (event.action == android.view.MotionEvent.ACTION_UP) runCatching { val point = previewView.meteringPointFactory.createPoint(event.x, event.y); camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build()) }; true else true } else Unit; onDispose { previewView.setOnTouchListener(null) } }
     DisposableEffect(Unit) { onDispose { executor.shutdownNow() } }
-
     Box(modifier.background(Color.Black)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
         if (!ready) Surface(Modifier.align(Alignment.Center), color = Color.Black.copy(alpha = .65f), shape = RoundedCornerShape(12.dp)) { Text("Starting camera…", color = Color.White, modifier = Modifier.padding(14.dp)) }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { flashOn = !flashOn; imageCapture?.flashMode = if (flashOn) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF }) { Icon(if (flashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, null, tint = Color.White) }
-            FilledIconButton(onClick = {
-                val capture = imageCapture ?: return@FilledIconButton
-                val file = File(context.cacheDir, "raw_scan_${System.currentTimeMillis()}.jpg")
-                capture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), executor, object : ImageCapture.OnImageSavedCallback {
-                    override fun onError(exception: ImageCaptureException) { android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, "Capture failed", Toast.LENGTH_SHORT).show() } }
-                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) { android.os.Handler(android.os.Looper.getMainLooper()).post { onCaptured(file) } }
-                })
-            }, Modifier.size(78.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = Color.Black)) { Icon(Icons.Default.CameraAlt, null, Modifier.size(34.dp)) }
+            FilledIconButton(onClick = { val capture = imageCapture ?: return@FilledIconButton; val file = File(context.cacheDir, "raw_scan_${System.currentTimeMillis()}.jpg"); capture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), executor, object : ImageCapture.OnImageSavedCallback { override fun onError(exception: ImageCaptureException) { android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, "Capture failed", Toast.LENGTH_SHORT).show() } }; override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) { android.os.Handler(android.os.Looper.getMainLooper()).post { onCaptured(file) } } }) }, Modifier.size(78.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = Color.Black)) { Icon(Icons.Default.CameraAlt, null, Modifier.size(34.dp)) }
             IconButton(onClick = { Toast.makeText(context, "Tap anywhere on the page to focus", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.CenterFocusStrong, null, tint = Color.White) }
         }
     }
 }
-
-fun copyUriToCache(context: Context, uri: android.net.Uri, name: String): File? = runCatching {
-    val target = File(context.cacheDir, name)
-    context.contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
-    target.takeIf { it.exists() && it.length() > 0 }
-}.getOrNull()
