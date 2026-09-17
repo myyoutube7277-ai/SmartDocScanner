@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,7 +35,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,10 +42,15 @@ import java.util.concurrent.Executors
 fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
     val context = LocalContext.current
     var captured by remember { mutableStateOf<File?>(null) }
-    var pages by remember { mutableStateOf<List<File>>(emptyList()) }
+    var pages by remember { mutableStateOf(DraftStore.load(context)) }
     var showSave by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf("B&W") }
+    var savedFile by remember { mutableStateOf<File?>(null) }
+    var filter by remember { mutableStateOf(SettingsStore.filter(context)) }
     var name by remember { mutableStateOf("Scanned Document") }
+
+    LaunchedEffect(pages) {
+        if (pages.isNotEmpty()) DraftStore.save(context, pages)
+    }
 
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val added = uris.mapIndexedNotNull { index, uri -> copyUriToCache(context, uri, "gallery_${System.currentTimeMillis()}_$index.jpg") }
@@ -58,7 +61,7 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
         ScannerEditFixed(
             file = captured!!,
             initialFilter = filter,
-            onFilter = { filter = it },
+            onFilter = { filter = it; SettingsStore.setFilter(context, it) },
             onAdd = { file -> pages = pages + file; captured = null },
             onCancel = { captured = null },
             onFinish = { file -> pages = pages + file; captured = null; showSave = true }
@@ -76,21 +79,15 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
         },
         bottomBar = {
             Row(Modifier.fillMaxWidth().background(Color(0xFF0A1016)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery")
-                }
-                Button(onClick = { if (pages.isNotEmpty()) showSave = true }, enabled = pages.isNotEmpty(), modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Done, null); Spacer(Modifier.width(6.dp)); Text("Finish")
-                }
+                OutlinedButton(onClick = { gallery.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.PhotoLibrary, null); Spacer(Modifier.width(6.dp)); Text("Gallery") }
+                Button(onClick = { if (pages.isNotEmpty()) showSave = true }, enabled = pages.isNotEmpty(), modifier = Modifier.weight(1f)) { Icon(Icons.Default.Done, null); Spacer(Modifier.width(6.dp)); Text("Finish") }
             }
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 SafeCameraPreview(Modifier.fillMaxSize(), onCaptured = { captured = it })
-                Surface(Modifier.align(Alignment.TopCenter).padding(14.dp), color = Color.Black.copy(alpha = .70f), shape = RoundedCornerShape(18.dp)) {
-                    Text("HD • ${pages.size + 1} page", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-                }
+                Surface(Modifier.align(Alignment.TopCenter).padding(14.dp), color = Color.Black.copy(alpha = .70f), shape = RoundedCornerShape(18.dp)) { Text("HD • ${pages.size + 1} page", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
                 Box(Modifier.align(Alignment.Center).size(290.dp, 400.dp).border(2.dp, Color(0xFF27E0B3), RoundedCornerShape(12.dp)))
             }
             Row(Modifier.fillMaxWidth().background(Color(0xFF0B1218)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -114,14 +111,24 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             if (output != null) {
                                 DocumentStore.add(context, DocumentRecord(System.currentTimeMillis(), safeName, output.absolutePath))
+                                DraftStore.clear(context)
                                 showSave = false
-                                onSaved()
+                                savedFile = output
                             } else Toast.makeText(context, "PDF save failed. Please try again.", Toast.LENGTH_LONG).show()
                         }
                     }.start()
                 }) { Text("Save PDF") }
             },
             dismissButton = { TextButton(onClick = { showSave = false }) { Text("Cancel") } }
+        )
+    }
+    if (savedFile != null) {
+        AlertDialog(
+            onDismissRequest = { savedFile = null; onSaved() },
+            title = { Text("Saved in My Files") },
+            text = { Text("PDF has been saved inside SmartDocScanner. You can share the saved file now.") },
+            confirmButton = { Button(onClick = { ShareUtil.share(context, savedFile!!, "application/pdf") }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(5.dp)); Text("Share") } },
+            dismissButton = { TextButton(onClick = { savedFile = null; onSaved() }) { Text("Done") } }
         )
     }
 }
@@ -148,19 +155,11 @@ private fun ScannerEditFixed(file: File, initialFilter: String, onFilter: (Strin
         }
     }
 
-    Scaffold(
-        containerColor = Color(0xFF05080C),
-        topBar = { TopAppBar(title = { Text("Edit & Enhance", color = Color.White) }, navigationIcon = { IconButton(onClick = onCancel) { Icon(Icons.Default.Close, null, tint = Color.White) } }) }
-    ) { padding ->
+    Scaffold(containerColor = Color(0xFF05080C), topBar = { TopAppBar(title = { Text("Edit & Enhance", color = Color.White) }, navigationIcon = { IconButton(onClick = onCancel) { Icon(Icons.Default.Close, null, tint = Color.White) } }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
-            Box(Modifier.fillMaxWidth().weight(1f).padding(12.dp), contentAlignment = Alignment.Center) {
-                processed?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
-            }
+            Box(Modifier.fillMaxWidth().weight(1f).padding(12.dp), contentAlignment = Alignment.Center) { processed?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } }
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf("Original", "Color", "B&W", "Clean White")) { label ->
-                    val value = when (label) { "Original" -> "Original"; "Clean White" -> "Clean White"; else -> label }
-                    FilterChip(selected = mode == value, onClick = { mode = value; onFilter(value) }, label = { Text(label) })
-                }
+                items(listOf("Original", "Color", "B&W", "Clean White")) { label -> FilterChip(selected = mode == label, onClick = { mode = label; onFilter(label) }, label = { Text(label) }) }
             }
             Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { rotation = (rotation + 90) % 360 }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.RotateRight, null); Spacer(Modifier.width(5.dp)); Text("Rotate") }
@@ -177,9 +176,7 @@ private fun ScannerEditFixed(file: File, initialFilter: String, onFilter: (Strin
 private fun saveScannerPage(context: Context, bitmap: Bitmap?): File? = runCatching {
     if (bitmap == null) return@runCatching null
     val file = File(context.cacheDir, "scan_page_${System.currentTimeMillis()}.jpg")
-    FileOutputStream(file).use { output ->
-        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 94, output)) { "bitmap compression failed" }
-    }
+    FileOutputStream(file).use { output -> check(bitmap.compress(Bitmap.CompressFormat.JPEG, 94, output)) { "bitmap compression failed" } }
     file
 }.getOrNull()
 
@@ -192,17 +189,11 @@ private fun SafeCameraPreview(modifier: Modifier, onCaptured: (File) -> Unit) {
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var flashOn by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) Toast.makeText(context, "Camera permission is required for scanning", Toast.LENGTH_LONG).show()
-    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (!granted) Toast.makeText(context, "Camera permission is required for scanning", Toast.LENGTH_LONG).show() }
     val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     LaunchedEffect(hasPermission) {
-        if (!hasPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-            return@LaunchedEffect
-        }
+        if (!hasPermission) { permissionLauncher.launch(Manifest.permission.CAMERA); return@LaunchedEffect }
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             runCatching {
@@ -211,34 +202,25 @@ private fun SafeCameraPreview(modifier: Modifier, onCaptured: (File) -> Unit) {
                 val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(95).build()
                 provider.unbindAll()
                 provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
-                imageCapture = capture
-                ready = true
+                imageCapture = capture; ready = true
             }.onFailure { Toast.makeText(context, "Camera could not start", Toast.LENGTH_LONG).show() }
         }, androidx.core.content.ContextCompat.getMainExecutor(context))
     }
-
     DisposableEffect(Unit) { onDispose { executor.shutdownNow() } }
 
     Box(modifier.background(Color.Black)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
         if (!ready) Surface(Modifier.align(Alignment.Center), color = Color.Black.copy(alpha = .65f), shape = RoundedCornerShape(12.dp)) { Text("Starting camera…", color = Color.White, modifier = Modifier.padding(14.dp)) }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = {
-                flashOn = !flashOn
-                imageCapture?.flashMode = if (flashOn) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
-            }) { Icon(if (flashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, null, tint = Color.White) }
-            FilledIconButton(
-                onClick = {
-                    val capture = imageCapture ?: return@FilledIconButton
-                    val file = File(context.cacheDir, "raw_scan_${System.currentTimeMillis()}.jpg")
-                    capture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), executor, object : ImageCapture.OnImageSavedCallback {
-                        override fun onError(exception: ImageCaptureException) { android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, "Capture failed", Toast.LENGTH_SHORT).show() } }
-                        override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) { android.os.Handler(android.os.Looper.getMainLooper()).post { onCaptured(file) } }
-                    })
-                },
-                modifier = Modifier.size(78.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = Color.Black)
-            ) { Icon(Icons.Default.CameraAlt, null, Modifier.size(34.dp)) }
+            IconButton(onClick = { flashOn = !flashOn; imageCapture?.flashMode = if (flashOn) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF }) { Icon(if (flashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, null, tint = Color.White) }
+            FilledIconButton(onClick = {
+                val capture = imageCapture ?: return@FilledIconButton
+                val file = File(context.cacheDir, "raw_scan_${System.currentTimeMillis()}.jpg")
+                capture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), executor, object : ImageCapture.OnImageSavedCallback {
+                    override fun onError(exception: ImageCaptureException) { android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, "Capture failed", Toast.LENGTH_SHORT).show() } }
+                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) { android.os.Handler(android.os.Looper.getMainLooper()).post { onCaptured(file) } }
+                })
+            }, Modifier.size(78.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = Color.Black)) { Icon(Icons.Default.CameraAlt, null, Modifier.size(34.dp)) }
             IconButton(onClick = { Toast.makeText(context, "Tap the screen where you want focus", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.CenterFocusStrong, null, tint = Color.White) }
         }
     }
