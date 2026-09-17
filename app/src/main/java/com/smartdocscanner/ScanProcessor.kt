@@ -4,30 +4,32 @@ import android.graphics.*
 import java.io.File
 import kotlin.math.*
 
-/** Lightweight document processing. Detection uses a down-scaled copy to avoid large bitmap work on the UI thread. */
+/** Background-safe document processing. Auto crop uses long edge scoring so it is not dependent on four perfect lines. */
 object ScanProcessor {
     data class Quad(val p: Array<PointF>, val width: Int, val height: Int)
 
     fun decode(file: File): Bitmap? = BitmapFactory.decodeFile(file.absolutePath)
 
     fun autoCrop(src: Bitmap): Bitmap {
+        if (src.width < 40 || src.height < 40) return src.copy(Bitmap.Config.ARGB_8888, false)
         val q = detectQuad(src) ?: return src.copy(Bitmap.Config.ARGB_8888, false)
         val tl = q.p[0]; val tr = q.p[1]; val br = q.p[2]; val bl = q.p[3]
-        val w = max(distance(tl, tr), distance(bl, br)).roundToInt().coerceAtLeast(1)
-        val h = max(distance(tl, bl), distance(tr, br)).roundToInt().coerceAtLeast(1)
+        val w = max(distance(tl, tr), distance(bl, br)).roundToInt().coerceAtLeast(2)
+        val h = max(distance(tl, bl), distance(tr, br)).roundToInt().coerceAtLeast(2)
         val dst = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val matrix = Matrix()
         val sp = floatArrayOf(tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y)
         val dp = floatArrayOf(0f, 0f, w.toFloat(), 0f, w.toFloat(), h.toFloat(), 0f, h.toFloat())
         if (!matrix.setPolyToPoly(sp, 0, dp, 0, 4)) {
-            dst.recycle(); return src.copy(Bitmap.Config.ARGB_8888, false)
+            dst.recycle()
+            return src.copy(Bitmap.Config.ARGB_8888, false)
         }
         Canvas(dst).drawBitmap(src, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         return dst
     }
 
     private fun detectQuad(src: Bitmap): Quad? {
-        val maxSide = 900
+        val maxSide = 720
         val scale = min(1f, maxSide.toFloat() / max(src.width, src.height).toFloat())
         val w = (src.width * scale).roundToInt().coerceAtLeast(40)
         val h = (src.height * scale).roundToInt().coerceAtLeast(40)
@@ -35,87 +37,79 @@ object ScanProcessor {
         try {
             val pixels = IntArray(w * h)
             small.getPixels(pixels, 0, w, 0, 0, w, h)
-            fun gray(x: Int, y: Int): Float {
+            fun gray(x: Int, y: Int): Int {
                 val c = pixels[y * w + x]
-                return 0.299f * Color.red(c) + 0.587f * Color.green(c) + 0.114f * Color.blue(c)
+                return (0.299f * Color.red(c) + 0.587f * Color.green(c) + 0.114f * Color.blue(c)).roundToInt()
             }
-            fun fit(points: List<PointF>): Pair<Float, Float>? {
-                if (points.size < 8) return null
-                var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0
-                points.forEach { sx += it.x; sy += it.y; sxx += it.x * it.x; sxy += it.x * it.y }
-                val n = points.size.toDouble()
-                val d = n * sxx - sx * sx
-                if (abs(d) < 1e-6) return null
-                val a = ((n * sxy - sx * sy) / d).toFloat()
-                val b = ((sy - a * sx) / n).toFloat()
-                return a to b
-            }
-            val top = mutableListOf<PointF>(); val bottom = mutableListOf<PointF>()
-            val left = mutableListOf<PointF>(); val right = mutableListOf<PointF>()
-            val sxStep = max(3, w / 100); val syStep = max(3, h / 100)
-            for (x in 8 until w - 8 step sxStep) {
-                var topBest = 0f; var topY = 1
-                for (y in 3 until (h / 2).coerceAtLeast(4)) {
-                    val g = abs(gray(x, y) - gray(x, y - 1))
-                    if (g > topBest) { topBest = g; topY = y }
-                }
-                var bottomBest = 0f; var bottomY = h - 2
-                for (y in (h / 2).coerceAtLeast(3) until h - 2) {
-                    val g = abs(gray(x, y) - gray(x, y - 1))
-                    if (g > bottomBest) { bottomBest = g; bottomY = y }
-                }
-                if (topBest > 14f) top += PointF(x.toFloat(), topY.toFloat())
-                if (bottomBest > 14f) bottom += PointF(x.toFloat(), bottomY.toFloat())
-            }
-            for (y in 8 until h - 8 step syStep) {
-                var leftBest = 0f; var leftX = 1
-                for (x in 3 until (w / 2).coerceAtLeast(4)) {
+            fun verticalScore(x: Int): Float {
+                if (x <= 1 || x >= w - 1) return 0f
+                var strong = 0; var sum = 0
+                for (y in 8 until h - 8 step 2) {
                     val g = abs(gray(x, y) - gray(x - 1, y))
-                    if (g > leftBest) { leftBest = g; leftX = x }
+                    sum += g
+                    if (g >= 18) strong++
                 }
-                var rightBest = 0f; var rightX = w - 2
-                for (x in (w / 2).coerceAtLeast(3) until w - 2) {
-                    val g = abs(gray(x, y) - gray(x - 1, y))
-                    if (g > rightBest) { rightBest = g; rightX = x }
-                }
-                if (leftBest > 14f) left += PointF(leftX.toFloat(), y.toFloat())
-                if (rightBest > 14f) right += PointF(rightX.toFloat(), y.toFloat())
+                return strong * 3.0f + sum.toFloat() / max(1, (h - 16) / 2)
             }
-            val t = fit(top) ?: return null
-            val b = fit(bottom) ?: return null
-            val l = fit(left.map { PointF(it.y, it.x) }) ?: return null
-            val r = fit(right.map { PointF(it.y, it.x) }) ?: return null
+            fun horizontalScore(y: Int): Float {
+                if (y <= 1 || y >= h - 1) return 0f
+                var strong = 0; var sum = 0
+                for (x in 8 until w - 8 step 2) {
+                    val g = abs(gray(x, y) - gray(x, y - 1))
+                    sum += g
+                    if (g >= 18) strong++
+                }
+                return strong * 3.0f + sum.toFloat() / max(1, (w - 16) / 2)
+            }
+            fun bestVertical(from: Int, to: Int): Pair<Int, Float> {
+                var bx = from; var bs = 0f
+                for (x in from..to) {
+                    val s = verticalScore(x)
+                    if (s > bs) { bs = s; bx = x }
+                }
+                return bx to bs
+            }
+            fun bestHorizontal(from: Int, to: Int): Pair<Int, Float> {
+                var by = from; var bs = 0f
+                for (y in from..to) {
+                    val s = horizontalScore(y)
+                    if (s > bs) { bs = s; by = y }
+                }
+                return by to bs
+            }
 
-            fun intersection(m1: Float, c1: Float, m2: Float, c2: Float): PointF? {
-                val den = 1f - m1 * m2
-                if (abs(den) < 0.02f) return null
-                val x = (m2 * c1 + c2) / den
-                return PointF(x, m1 * x + c1)
-            }
-            val tl = intersection(t.first, t.second, l.first, l.second) ?: return null
-            val tr = intersection(t.first, t.second, r.first, r.second) ?: return null
-            val bl = intersection(b.first, b.second, l.first, l.second) ?: return null
-            val br = intersection(b.first, b.second, r.first, r.second) ?: return null
-            val pts = arrayOf(tl, tr, br, bl)
-            if (!pts.all { it.x in 0f..w.toFloat() && it.y in 0f..h.toFloat() }) return null
-            val areaRatio = abs(polygonArea(pts)) / (w.toFloat() * h.toFloat())
-            if (areaRatio < 0.30f) return null
-            val topLen = distance(tl, tr); val bottomLen = distance(bl, br)
-            val leftLen = distance(tl, bl); val rightLen = distance(tr, br)
-            if (topLen < w * 0.30f || bottomLen < w * 0.30f || leftLen < h * 0.30f || rightLen < h * 0.30f) return null
-            return Quad(pts.map { PointF(it.x / scale, it.y / scale) }.toTypedArray(), max(topLen, bottomLen).roundToInt(), max(leftLen, rightLen).roundToInt())
+            val leftRange = (w * 0.04f).roundToInt()..(w * 0.46f).roundToInt()
+            val rightRange = (w * 0.54f).roundToInt()..(w * 0.96f).roundToInt()
+            val topRange = (h * 0.04f).roundToInt()..(h * 0.46f).roundToInt()
+            val bottomRange = (h * 0.54f).roundToInt()..(h * 0.96f).roundToInt()
+            val (lx, ls) = bestVertical(leftRange.first, leftRange.last)
+            val (rx, rs) = bestVertical(rightRange.first, rightRange.last)
+            val (ty, ts) = bestHorizontal(topRange.first, topRange.last)
+            val (by, bs) = bestHorizontal(bottomRange.first, bottomRange.last)
+
+            val minWidth = w * 0.30f
+            val minHeight = h * 0.30f
+            val reliable = ls >= 32f && rs >= 32f && ts >= 32f && bs >= 32f &&
+                rx - lx >= minWidth && by - ty >= minHeight
+            if (!reliable) return null
+
+            val tl = PointF(lx.toFloat(), ty.toFloat())
+            val tr = PointF(rx.toFloat(), ty.toFloat())
+            val br = PointF(rx.toFloat(), by.toFloat())
+            val bl = PointF(lx.toFloat(), by.toFloat())
+            return Quad(
+                arrayOf(
+                    PointF(tl.x / scale, tl.y / scale),
+                    PointF(tr.x / scale, tr.y / scale),
+                    PointF(br.x / scale, br.y / scale),
+                    PointF(bl.x / scale, bl.y / scale)
+                ),
+                (rx - lx).roundToInt(),
+                (by - ty).roundToInt()
+            )
         } finally {
             small.recycle()
         }
-    }
-
-    private fun polygonArea(p: Array<PointF>): Float {
-        var s = 0.0
-        for (i in p.indices) {
-            val j = (i + 1) % p.size
-            s += p[i].x.toDouble() * p[j].y - p[j].x.toDouble() * p[i].y
-        }
-        return (s / 2.0).toFloat()
     }
 
     private fun distance(a: PointF, b: PointF): Float = hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()
@@ -138,7 +132,7 @@ object ScanProcessor {
             var v = lum[i]
             when (mode) {
                 "B&W" -> v = if (localThreshold(lum, w, h, x, y, global) >= v) 0 else 255
-                "High Contrast", "Clean White" -> v = (((v - 128) * 1.28f) + 128).roundToInt().coerceIn(0, 255)
+                "High Contrast", "Clean White", "Enhance" -> v = (((v - 128) * 1.28f) + 128).roundToInt().coerceIn(0, 255)
             }
             output[i] = Color.rgb(v, v, v)
         }
@@ -152,11 +146,14 @@ object ScanProcessor {
     }
 
     private fun otsu(hist: IntArray, total: Int): Int {
-        var sum = 0.0; for (i in 0..255) sum += i.toDouble() * hist[i]
+        var sum = 0.0
+        for (i in 0..255) sum += i.toDouble() * hist[i]
         var sb = 0.0; var wb = 0; var best = 0.0; var threshold = 128
         for (t in 0..255) {
-            wb += hist[t]; if (wb == 0) continue
-            val wf = total - wb; if (wf == 0) break
+            wb += hist[t]
+            if (wb == 0) continue
+            val wf = total - wb
+            if (wf == 0) break
             sb += t.toDouble() * hist[t]
             val mb = sb / wb; val mf = (sum - sb) / wf
             val variance = wb.toDouble() * wf * (mb - mf) * (mb - mf)
