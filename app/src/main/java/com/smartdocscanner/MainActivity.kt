@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -94,7 +96,7 @@ fun SmartDocApp() {
                 onIdScan = { screen = "idscan" },
                 onSettings = { screen = "settings" },
                 onDocuments = { screen = "documents" },
-                onHelp = { Toast.makeText(c, "Help & Support is coming soon", Toast.LENGTH_SHORT).show() },
+                onHelp = { screen = "help" },
                 refresh = refresh,
                 onOpen = { selectedFile = it; screen = "viewer" }
             )
@@ -117,6 +119,32 @@ fun SmartDocApp() {
             "idscan" -> IdScanScreen(onBack = { screen = "home" }, onSaved = { refresh++; screen = "home" })
             "pdf" -> PdfToolsScreen(onBack = { screen = "home" })
             "viewer" -> selectedFile?.let { ViewerScreen(it, onBack = { screen = "home" }) }
+            "help" -> HelpScreen(onBack = { screen = "home" })
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HelpScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = Color(0xFF05080C),
+        topBar = { TopAppBar(title = { Text("Help & Support", color = Color.White) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } }) }
+    ) { pad ->
+        LazyColumn(Modifier.padding(pad).fillMaxSize().background(Color(0xFF05080C)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Text("SmartDoc Scanner", color = Color(0xFF27E0B3), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+            item { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D151C))) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Quick Help", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("• Scan Document: camera se document capture karke crop, enhance aur PDF save karein.", color = Color(0xFFB6C3CF))
+                Text("• Gallery to PDF: ek ya kai images select karke PDF banayein.", color = Color(0xFFB6C3CF))
+                Text("• OCR: image se text read karke Word export karein.", color = Color(0xFFB6C3CF))
+                Text("• ID Card Scan: front aur back ko ek A4 PDF me save karein.", color = Color(0xFFB6C3CF))
+                Text("• PDF Tools: PDF ko images me convert, split, merge aur compress karein.", color = Color(0xFFB6C3CF))
+            } } }
+            item { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF101820))) { Column(Modifier.padding(16.dp)) {
+                Text("Important", color = Color(0xFF8B6CFF), fontWeight = FontWeight.Bold)
+                Text("Editable Word/Excel conversion document ke layout aur OCR quality par depend karta hai; scanned page ko image ke roop me preserve karna aur fully editable reconstruction alag results de sakte hain.", color = Color(0xFFB6C3CF))
+            } } }
         }
     }
 }
@@ -406,133 +434,23 @@ fun DocumentsScreen(refresh: Int, onBack: () -> Unit, onOpen: (File) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
-    val c = LocalContext.current
-    var dark by remember { mutableStateOf(SettingsStore.darkTheme(c)) }
-    var crop by remember { mutableStateOf(SettingsStore.autoCrop(c)) }
-    var hindi by remember { mutableStateOf(SettingsStore.hindiOcr(c)) }
-    var mode by remember { mutableStateOf(SettingsStore.pdfMode(c)) }
-    var filter by remember { mutableStateOf(SettingsStore.filter(c).ifBlank { "B&W" }) }
-    var showMode by remember { mutableStateOf(false) }
-    var showFilter by remember { mutableStateOf(false) }
-
-    fun changed() = onChanged()
-
-    Scaffold(topBar = {
-        TopAppBar(title = { Text("Settings") }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) } })
-    }) { pad ->
-        LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { Text("Scanning", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-            item {
-                SettingsRow(
-                    "Automatic crop",
-                    "Trim document margins after capture",
-                    crop,
-                    onCheckedChange = { value ->
-                        crop = value
-                        SettingsStore.setAutoCrop(c, value)
-                        changed()
-                    }
-                )
-            }
-            item {
-                SettingsRow("Default filter", filter, false, onClick = { showFilter = true })
-            }
-            item {
-                SettingsRow("PDF mode", if (mode == PdfEngine.SizeMode.QUALITY) "Quality Based" else "Maximum Size", false, onClick = { showMode = true })
-            }
-            item {
-                var expandedPaper by remember { mutableStateOf(false) }
-                Box(Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick={expandedPaper=true}, modifier=Modifier.fillMaxWidth()) {
-                        Text("Paper size: ${SettingsStore.paperSize(c)}"); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown,null)
-                    }
-                    DropdownMenu(expanded=expandedPaper,onDismissRequest={expandedPaper=false}) {
-                        listOf("Auto","A4","A5","Letter","Legal").forEach { value -> DropdownMenuItem(text={Text(value)},onClick={SettingsStore.setPaperSize(c,value);expandedPaper=false;changed()}) }
-                    }
-                }
-            }
-            item {
-                var expanded by remember { mutableStateOf(false) }
-                Box(Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick={expanded=true}, modifier=Modifier.fillMaxWidth()) {
-                        Text("Maximum PDF size: ${SettingsStore.maxSizeChoice(c)}"); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ArrowDropDown,null)
-                    }
-                    DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
-                        listOf("500 KB","1 MB","2 MB","5 MB","10 MB","20 MB","50 MB").forEach { size ->
-                            DropdownMenuItem(text={Text(size)},onClick={SettingsStore.setMaxSizeChoice(c,size);expanded=false;changed()})
-                        }
-                    }
-                }
-            }
-            item { HorizontalDivider() }
-            item { Text("OCR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-            item {
-                SettingsRow(
-                    "Hindi / Devanagari OCR",
-                    "Recognize Hindi text when available",
-                    hindi,
-                    onCheckedChange = { value ->
-                        hindi = value
-                        SettingsStore.setHindiOcr(c, value)
-                        changed()
-                    }
-                )
-            }
-            item { HorizontalDivider() }
-            item { Text("Appearance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-            item {
-                SettingsRow(
-                    "Dark theme",
-                    "Use dark appearance",
-                    dark,
-                    onCheckedChange = { value ->
-                        dark = value
-                        SettingsStore.setDarkTheme(c, value)
-                        changed()
-                    }
-                )
-            }
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("About SmartDoc", fontWeight = FontWeight.SemiBold)
-                        Text("Professional document scanning, OCR and PDF tools.", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-
-        if (showMode) {
-            AlertDialog(onDismissRequest = { showMode = false }, title = { Text("Default PDF mode") }, text = {
-                Column {
-                    listOf(PdfEngine.SizeMode.QUALITY to "Quality Based", PdfEngine.SizeMode.MAXIMUM to "Maximum Size").forEach { (value, label) ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = mode == value, onClick = {
-                                mode = value; SettingsStore.setPdfMode(c, value); showMode = false; changed()
-                            })
-                            Text(label)
-                        }
-                    }
-                }
-            }, confirmButton = { TextButton(onClick = { showMode = false }) { Text("Close") } })
-        }
-
-        if (showFilter) {
-            AlertDialog(onDismissRequest = { showFilter = false }, title = { Text("Default scan filter") }, text = {
-                Column {
-                    listOf("B&W", "Color", "Gray", "High Contrast").forEach { value ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(selected = filter == value, onClick = {
-                                filter = value; SettingsStore.setFilter(c, value); showFilter = false; changed()
-                            })
-                            Text(value)
-                        }
-                    }
-                }
-            }, confirmButton = { TextButton(onClick = { showFilter = false }) { Text("Close") } })
-        }
-    }
+fun SettingsScreen(onBack:()->Unit,onChanged:()->Unit){
+    val c=LocalContext.current;var dark by remember{mutableStateOf(SettingsStore.darkTheme(c))};var crop by remember{mutableStateOf(SettingsStore.autoCrop(c))};var hindi by remember{mutableStateOf(SettingsStore.hindiOcr(c))};var filter by remember{mutableStateOf(SettingsStore.filter(c).ifBlank{"B&W"})};var paper by remember{mutableStateOf(SettingsStore.paperSize(c))};var size by remember{mutableStateOf(SettingsStore.maxSizeChoice(c))};var theme by remember{mutableStateOf("Dark")}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Settings",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->LazyColumn(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        item{Text("Appearance",color=Color.White,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
+        item{SettingsRow("Theme",theme,false,onClick={theme=if(theme=="Dark")"System" else "Dark";SettingsStore.setDarkTheme(c,theme=="Dark");dark=theme=="Dark";onChanged()})}
+        item{SettingsRow("Accent Colour","Teal Green + Purple",false,onClick={})}
+        item{SettingsRow("Language","English / Hindi OCR",false,onClick={})}
+        item{Text("Scan Settings",color=Color.White,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=8.dp))}
+        item{SettingsRow("Default Filter",filter,false,onClick={filter=if(filter=="B&W")"Color" else "B&W";SettingsStore.setFilter(c,filter);onChanged()})}
+        item{SettingsRow("Paper Size",paper,false,onClick={paper=if(paper=="A4")"Auto" else "A4";SettingsStore.setPaperSize(c,paper);onChanged()})}
+        item{SettingsRow("Image Quality","High / JPEG 98%",false,onClick={})}
+        item{SettingsRow("Auto Crop","Detect document edges after capture",crop,{v->crop=v;SettingsStore.setAutoCrop(c,v);onChanged()})}
+        item{SettingsRow("Auto Save to Draft","Save immediately after capture",true,{})}
+        item{SettingsRow("Maximum PDF Size",size,false,onClick={size=when(size){"500 KB"->"1 MB";"1 MB"->"2 MB";"2 MB"->"5 MB";"5 MB"->"10 MB";else->"500 KB"};SettingsStore.setMaxSizeChoice(c,size);onChanged()})}
+        item{SettingsRow("Hindi / Devanagari OCR","Recognize Hindi text",hindi,{v->hindi=v;SettingsStore.setHindiOcr(c,v);onChanged()})}
+        item{Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Column(Modifier.padding(16.dp)){Text("SmartDocScanner",color=Color.White,fontWeight=FontWeight.Bold);Text("Dark modern document workspace",color=Color(0xFF8192A3))}}
+    }}
 }
 
 @Composable
@@ -568,361 +486,128 @@ private fun prepareScanFile(context: android.content.Context, source: File, tag:
 fun ScannerScreen(onBack:()->Unit,onSaved:()->Unit){
     val c=LocalContext.current
     var captured by remember{mutableStateOf<File?>(null)}
-    var mode by remember{mutableStateOf(SettingsStore.pdfMode(c))}
-    var maxChoice by remember{mutableStateOf(SettingsStore.maxSizeChoice(c))}
-    var paperSize by remember{mutableStateOf(SettingsStore.paperSize(c))}
     var pages by remember{mutableStateOf(listOf<File>())}
     var showName by remember{mutableStateOf(false)}
     var name by remember{mutableStateOf("Scanned Document")}
     var folder by remember{mutableStateOf("")}
     var autoSave by remember{mutableStateOf(true)}
     var draftId by remember{mutableStateOf<Long?>(null)}
-    var showSize by remember{mutableStateOf(false)}
-    var showPaper by remember{mutableStateOf(false)}
-    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){ uris ->
+    var filter by remember{mutableStateOf(SettingsStore.filter(c).ifBlank{"B&W"})}
+    var paper by remember{mutableStateOf(SettingsStore.paperSize(c))}
+    var size by remember{mutableStateOf(SettingsStore.maxSizeChoice(c))}
+    val gallery=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
         val added=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"gallery_${System.currentTimeMillis()}_$idx.jpg")?.let{prepareScanFile(c,it,"gallery_adjusted")}}
-        if(added.isNotEmpty()) {
-            pages=pages+added
-            if (autoSave) {
-                val draft = PdfEngine.createPdfAuto(c.filesDir, pages, PdfEngine.SizeMode.QUALITY, maxChoice, paperSize, "AutoSaved_Draft")
-                if (draft != null) {
-                    val id = draftId
-                    if (id == null) {
-                        val newId = System.currentTimeMillis(); draftId = newId
-                        DocumentStore.add(c, DocumentRecord(newId, "Auto Saved Draft", draft.absolutePath, folder.trim()))
-                    } else {
-                        DocumentStore.all(c).firstOrNull { it.id == id }?.let { old -> File(old.path).delete(); DocumentStore.update(c, old.copy(path=draft.absolutePath, folder=folder.trim())) }
-                    }
-                }
-            }
-        }
+        if(added.isNotEmpty()) pages=pages+added
     }
-    fun saveDraftNow(current: List<File>) {
-        if (!autoSave || current.isEmpty()) return
-        val draft = PdfEngine.createPdfAuto(c.filesDir, current, PdfEngine.SizeMode.QUALITY, maxChoice, paperSize, "AutoSaved_Draft") ?: return
-        val id = draftId
-        if (id == null) {
-            val newId = System.currentTimeMillis(); draftId = newId
-            DocumentStore.add(c, DocumentRecord(newId, "Auto Saved Draft", draft.absolutePath, folder.trim()))
-        } else {
-            DocumentStore.all(c).firstOrNull { it.id == id }?.let { old ->
-                File(old.path).delete()
-                DocumentStore.update(c, old.copy(path = draft.absolutePath, folder = folder.trim()))
-            }
-        }
+    fun autosave(){
+        if(!autoSave) return
+        val all=pages+(captured?:return)
+        val draft=PdfEngine.createPdfAuto(c.filesDir,all,PdfEngine.SizeMode.MAXIMUM,size,paper,"AutoSaved_Draft") ?: return
+        val id=draftId
+        if(id==null){ val newId=System.currentTimeMillis(); draftId=newId; DocumentStore.add(c,DocumentRecord(newId,"Auto Saved Draft",draft.absolutePath,folder.trim())) }
+        else DocumentStore.all(c).firstOrNull{it.id==id}?.let{old->File(old.path).delete();DocumentStore.update(c,old.copy(path=draft.absolutePath,folder=folder.trim()))}
     }
     if(captured!=null){
-        ScanEditor(
-            file=captured!!,
-            onBack={
-                val current = pages + captured!!
-                saveDraftNow(current)
-                pages = current
-                captured = null
-            },
-            onAdd={f->
-                val all = pages + f
-                pages = all
-                captured=null
-                if (autoSave) {
-                    val draft = PdfEngine.createPdfAuto(c.filesDir, all, PdfEngine.SizeMode.QUALITY, maxChoice, paperSize, "AutoSaved_Draft")
-                    if (draft != null) {
-                        val id = draftId
-                        if (id == null) {
-                            val newId = System.currentTimeMillis()
-                            draftId = newId
-                            DocumentStore.add(c, DocumentRecord(newId, "Auto Saved Draft", draft.absolutePath, folder.trim()))
-                        } else {
-                            val old = DocumentStore.all(c).firstOrNull { it.id == id }
-                            old?.let { File(it.path).delete(); DocumentStore.update(c, it.copy(path = draft.absolutePath, folder = folder.trim())) }
-                        }
-                    }
-                }
-            },
-            onFinish={f->
-                pages=pages+f
-                captured=null
-                showName=true
-            },
-            pages=pages.size
-        )
+        ScanEditor(file=captured!!,pages=pages.size,onBack={autosave();captured=null},onAdd={f->pages=pages+f;captured=null;autosave()},onFinish={f->pages=pages+f;captured=null;showName=true})
         return
     }
-    val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->
-        if(!granted) Toast.makeText(c,"Camera permission is required",Toast.LENGTH_LONG).show()
-    }
-    LaunchedEffect(Unit){permission.launch(Manifest.permission.CAMERA)}
+    LaunchedEffect(Unit){ }
     if(showName){
-        AlertDialog(
-            onDismissRequest={showName=false},
-            title={Text("Save PDF")},
-            text={Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
-                OutlinedTextField(name,{name=it},label={Text("Document name")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                OutlinedTextField(folder,{folder=it},label={Text("Folder (optional)")},singleLine=true,modifier=Modifier.fillMaxWidth(),placeholder={Text("e.g. Office / 2026")})
-                Text("${pages.size} page(s) • ${SettingsStore.paperSize(c)} • ${if(mode==PdfEngine.SizeMode.QUALITY)"Quality" else maxChoice}",style=MaterialTheme.typography.bodySmall)
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    Text("Auto save draft", Modifier.weight(1f))
-                    Switch(autoSave, { autoSave = it })
-                }
-            }},
-            confirmButton={Button(onClick={
-                val finalName=name.trim().ifBlank{"Scanned Document"}
-                val pdf=PdfEngine.createPdfAuto(c.filesDir,pages,mode,maxChoice,paperSize,finalName)
-                if(pdf!=null){
-                    draftId?.let { id ->
-                        DocumentStore.all(c).firstOrNull { it.id == id }?.let { draft ->
-                            File(draft.path).delete()
-                            DocumentStore.delete(c, draft.copy(path = ""))
-                        }
-                    }
-                    DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),finalName,pdf.absolutePath,folder.trim()))
-                    draftId=null
-                    Toast.makeText(c,"PDF saved",Toast.LENGTH_SHORT).show();showName=false;onSaved()
-                } else Toast.makeText(c,"Could not create PDF within selected size",Toast.LENGTH_LONG).show()
-            }){Text("Save")}},
-            dismissButton={TextButton(onClick={showName=false}){Text("Cancel")}}
-        )
+        AlertDialog(onDismissRequest={showName=false},title={Text("Save Document")},text={Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+            OutlinedTextField(name,{name=it},label={Text("Document name")},singleLine=true,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(folder,{folder=it},label={Text("Folder (optional)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+            Text("${pages.size} page(s) • $paper • $size",color=Color(0xFF9CAFC0))
+        }},confirmButton={Button(onClick={
+            val n=name.trim().ifBlank{"Scanned Document"}; val pdf=PdfEngine.createPdfAuto(c.filesDir,pages,PdfEngine.SizeMode.MAXIMUM,size,paper,n)
+            if(pdf!=null){draftId?.let{id->DocumentStore.all(c).firstOrNull{it.id==id}?.let{d->File(d.path).delete();DocumentStore.delete(c,d.copy(path=""))}};DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),n,pdf.absolutePath,folder.trim()));showName=false;onSaved()}
+        }){Text("Save PDF")}},dismissButton={TextButton({showName=false}){Text("Cancel")}})
     }
-    Scaffold(topBar={TopAppBar(title={Text("Document Scanner")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).fillMaxSize()){
-            CameraCapture(Modifier.fillMaxWidth().weight(1f)){f ->
-                captured = f
-                // Save a draft immediately when the shutter is pressed.
-                saveDraftNow(pages + f)
-            }
-            Row(Modifier.padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={gallery.launch(arrayOf("image/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(5.dp));Text("Gallery")}
-                Button(onClick={if(pages.isNotEmpty() || captured!=null)showName=true},modifier=Modifier.weight(1f)){Text("Finish (${pages.size + if(captured!=null)1 else 0})")}
-            }
-            Row(Modifier.padding(horizontal=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={showPaper=true},modifier=Modifier.weight(1f)){Text(if(paperSize=="Auto") "Paper: Auto Detect" else "Paper: ${paperSize}");Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
-                OutlinedButton(onClick={showSize=true},modifier=Modifier.weight(1f)){Text(if(mode==PdfEngine.SizeMode.QUALITY)"Quality Based" else maxChoice);Spacer(Modifier.weight(1f));Icon(Icons.Default.ArrowDropDown,null)}
-            }
-            if (pages.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(pages.size) { index ->
-                        val pageFile = pages[index]
-                        Card {
-                            Column(Modifier.width(120.dp).padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                ScanProcessor.decode(pageFile)?.let { preview ->
-                                    Image(preview.asImageBitmap(), "Page ${index + 1}", Modifier.fillMaxWidth().height(140.dp))
-                                }
-                                Text("Page ${index + 1}", style = MaterialTheme.typography.labelSmall)
-                                Row {
-                                    IconButton(enabled = index > 0, onClick = { pages = pages.toMutableList().apply { add(index - 1, removeAt(index)) } }) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
-                                    IconButton(onClick = { pages = pages.toMutableList().apply { removeAt(index) } }) { Icon(Icons.Default.Delete, "Delete page") }
-                                    IconButton(enabled = index < pages.lastIndex, onClick = { pages = pages.toMutableList().apply { add(index + 1, removeAt(index)) } }) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
-                                }
-                            }
-                        }
-                    }
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Scan Document",color=Color.White)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.Close,null,tint=Color.White)}},actions={
+        Surface(color=Color(0xFF101820),shape=RoundedCornerShape(14.dp)){Text("HD",color=Color(0xFF27E0B3),fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=12.dp,vertical=7.dp))}
+    })},bottomBar={
+        Row(Modifier.fillMaxWidth().background(Color(0xFF090F14)).padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+            OutlinedButton(onClick={gallery.launch(arrayOf("image/*"))},modifier=Modifier.weight(1f)){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(6.dp));Text("Gallery")}
+            Button(onClick={if(pages.isNotEmpty())showName=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.Done,null);Spacer(Modifier.width(6.dp));Text("Finish")}
+            OutlinedButton(onClick={showName=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.Edit,null);Spacer(Modifier.width(5.dp));Text("Save")}
+        }
+    }){pad->
+        Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)){
+            Box(Modifier.fillMaxWidth().weight(1f)){
+                CameraCapture(Modifier.fillMaxSize()){f->captured=f;autosave()}
+                Column(Modifier.align(Alignment.TopCenter).padding(14.dp),horizontalAlignment=Alignment.CenterHorizontally){
+                    Surface(color=Color.Black.copy(.72f),shape=RoundedCornerShape(20.dp)){Text("Auto Detecting…",color=Color.White,modifier=Modifier.padding(horizontal=18.dp,vertical=8.dp))}
+                    Spacer(Modifier.height(8.dp));Text("Place document inside the frame",color=Color.White,style=MaterialTheme.typography.labelSmall)
+                }
+                Row(Modifier.align(Alignment.BottomCenter).padding(bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                    listOf("Auto","Document","ID Card","Whiteboard").forEach{m->Surface(color=if(m=="Document")Color(0xFF27E0B3) else Color.Black.copy(.65f),shape=RoundedCornerShape(18.dp)){Text(m,color=if(m=="Document")Color.Black else Color.White,modifier=Modifier.padding(horizontal=12.dp,vertical=7.dp))}}
                 }
             }
-            Text("Pages queued: ${pages.size}",Modifier.padding(16.dp))
+            Row(Modifier.fillMaxWidth().background(Color(0xFF0A1016)).padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                OutlinedButton(onClick={filter="B&W";SettingsStore.setFilter(c,filter)},modifier=Modifier.weight(1f)){Text("B&W")}
+                OutlinedButton(onClick={filter="Color";SettingsStore.setFilter(c,filter)},modifier=Modifier.weight(1f)){Text("Color")}
+                OutlinedButton(onClick={paper=if(paper=="A4")"Auto" else "A4"},modifier=Modifier.weight(1f)){Text(paper)}
+                OutlinedButton(onClick={showName=true},modifier=Modifier.weight(1f)){Text("${pages.size} Pages")}
+            }
         }
     }
-    if(showSize)AlertDialog(onDismissRequest={showSize=false},title={Text("PDF output size")},text={Column{listOf("500 KB","1 MB","2 MB","5 MB","10 MB","20 MB","50 MB").forEach{choice->Row(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically){RadioButton(selected=choice==maxChoice,onClick={maxChoice=choice;SettingsStore.setMaxSizeChoice(c,choice);mode=PdfEngine.SizeMode.MAXIMUM;showSize=false});Text(choice)}}}},confirmButton={TextButton(onClick={showSize=false}){Text("Close")}})
-    if(showPaper)AlertDialog(onDismissRequest={showPaper=false},title={Text("Paper size")},text={Column{listOf("Auto","A4","A5","Letter","Legal").forEach{choice->Row(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically){RadioButton(selected=choice==paperSize,onClick={paperSize=choice;SettingsStore.setPaperSize(c,choice);showPaper=false});Text(choice)}}}},confirmButton={TextButton(onClick={showPaper=false}){Text("Close")}})
 }
 
 @Composable
 fun CameraCapture(modifier: Modifier, onCaptured: (File) -> Unit) {
-    val c = LocalContext.current
-    val previewView = remember {
-        PreviewView(c).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
+    val c=LocalContext.current
+    val previewView=remember{PreviewView(c).apply{scaleType=PreviewView.ScaleType.FILL_CENTER;implementationMode=PreviewView.ImplementationMode.COMPATIBLE}}
+    val executor=remember{Executors.newSingleThreadExecutor()}; var capState by remember{mutableStateOf<ImageCapture?>(null)}; var busy by remember{mutableStateOf(false)}
+    LaunchedEffect(Unit){runCatching{val provider=ProcessCameraProvider.getInstance(c).get();val preview=Preview.Builder().build().also{it.surfaceProvider=previewView.surfaceProvider};val cap=ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(98).build();capState=cap;provider.unbindAll();provider.bindToLifecycle(c as ComponentActivity,CameraSelector.DEFAULT_BACK_CAMERA,preview,cap)}}
+    Box(modifier.background(Color.Black)){
+        AndroidView({previewView},Modifier.fillMaxSize())
+        Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween){Surface(color=Color.Black.copy(.72f),shape=RoundedCornerShape(16.dp)){Text("AUTO • DOCUMENT",color=Color.White,modifier=Modifier.padding(10.dp))};Surface(color=Color.Black.copy(.72f),shape=RoundedCornerShape(16.dp)){Text("HD",color=Color(0xFF27E0B3),fontWeight=FontWeight.Bold,modifier=Modifier.padding(10.dp))}}
+        Box(Modifier.align(Alignment.Center).size(260.dp,340.dp)){Text("",Modifier.fillMaxSize().border(2.dp,Color(0xFF27E0B3),RoundedCornerShape(8.dp)))}
+        Surface(Modifier.align(Alignment.BottomCenter).padding(bottom=88.dp),color=Color.Black.copy(.78f),shape=RoundedCornerShape(20.dp)){Text(if(busy)"Enhancing & auto-cropping…" else "Tap to capture • Auto adjust",color=Color.White,modifier=Modifier.padding(horizontal=18.dp,vertical=9.dp))}
+        FilledIconButton(onClick={val cap=capState ?: return@FilledIconButton;if(busy)return@FilledIconButton;busy=true;val f=File(c.cacheDir,"scan_${System.currentTimeMillis()}.jpg");cap.takePicture(ImageCapture.OutputFileOptions.Builder(f).build(),executor,object:ImageCapture.OnImageSavedCallback{override fun onError(e:ImageCaptureException){busy=false;Toast.makeText(c,e.message?:"Capture failed",Toast.LENGTH_SHORT).show()};override fun onImageSaved(r:ImageCapture.OutputFileResults){android.os.Handler(android.os.Looper.getMainLooper()).post{busy=false;onCaptured(prepareScanFile(c,f,"camera_adjusted"))}}})},Modifier.align(Alignment.BottomCenter).padding(bottom=18.dp).size(78.dp),colors=IconButtonDefaults.filledIconButtonColors(containerColor=Color.White,contentColor=Color.Black)){Icon(Icons.Default.CameraAlt,"Capture",Modifier.size(34.dp))}
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=24.dp,bottom=22.dp),horizontalArrangement=Arrangement.SpaceBetween){IconButton(onClick={Toast.makeText(c,"Gallery is available below",Toast.LENGTH_SHORT).show()}){Icon(Icons.Default.PhotoLibrary,null,tint=Color.White)};IconButton(onClick={}){Icon(Icons.Default.FlashOn,null,tint=Color.White)}}
     }
-    val executor = remember { Executors.newSingleThreadExecutor() }
-    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        val provider = ProcessCameraProvider.getInstance(c).get()
-        val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-        val cap = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .setJpegQuality(95)
-            .build()
-        imageCapture = cap
-        provider.unbindAll()
-        provider.bindToLifecycle(c as ComponentActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, cap)
-    }
-    Box(modifier.background(androidx.compose.ui.graphics.Color.Black)) {
-        AndroidView({ previewView }, Modifier.fillMaxSize())
-        // Solid dark controls keep scanner actions readable over every camera scene.
-        Row(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(color = androidx.compose.ui.graphics.Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(18.dp)) {
-                Text("AUTO • DOCUMENT", color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), fontWeight = FontWeight.SemiBold)
-            }
-            Surface(color = androidx.compose.ui.graphics.Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(18.dp)) {
-                Text("HD", color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontWeight = FontWeight.Bold)
-            }
-        }
-        Surface(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
-            shape = RoundedCornerShape(34.dp), color = androidx.compose.ui.graphics.Color.Black.copy(alpha = .76f)
-        ) {
-            Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = androidx.compose.ui.graphics.Color.White)
-                Spacer(Modifier.width(8.dp))
-                Text(if (busy) "Processing…" else "Tap to capture • Auto adjust", color = androidx.compose.ui.graphics.Color.White)
-            }
-        }
-        Button(
-            enabled = !busy,
-            onClick = {
-                val cap = imageCapture
-                if (cap != null) {
-                busy = true
-                val f = File(c.cacheDir, "scan_${System.currentTimeMillis()}.jpg")
-                val opts = ImageCapture.OutputFileOptions.Builder(f).build()
-                cap.takePicture(opts, executor, object : ImageCapture.OnImageSavedCallback {
-                    override fun onError(e: ImageCaptureException) {
-                        busy = false
-                        Toast.makeText(c, e.message ?: "Capture failed", Toast.LENGTH_SHORT).show()
-                    }
-                    override fun onImageSaved(r: ImageCapture.OutputFileResults) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            busy = false
-                            onCaptured(prepareScanFile(c, f, "camera_adjusted"))
-                        }
-                    }
-                })
-                }
-            },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).size(84.dp),
-            shape = RoundedCornerShape(50.dp)
-        ) {
-            Icon(Icons.Default.CameraAlt, "Capture", Modifier.size(34.dp))
-        }
-    }
-    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
+    DisposableEffect(Unit){onDispose{executor.shutdown()}}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:(File)->Unit,pages:Int){
-    val c=LocalContext.current
-    var bmp by remember(file){mutableStateOf(ScanProcessor.decode(file))}
-    var filter by remember{mutableStateOf(SettingsStore.filter(c))}
-    var showCrop by remember{mutableStateOf(false)}
-    Scaffold(topBar={TopAppBar(title={Text("Edit Scan")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
-            bmp?.let{Image(it.asImageBitmap(),null,Modifier.fillMaxWidth().weight(1f))}
-            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-                listOf("Color","Gray","B&W","High Contrast").forEach{FilterChip(filter==it,{filter=it;bmp=bmp?.let{x->ScanProcessor.filter(x,it)}},label={Text(it)})}
-            }
-            Row(modifier=Modifier.padding(top=8.dp), horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={showCrop=true}){Icon(Icons.Default.Crop,null);Spacer(Modifier.width(4.dp));Text("Manual Crop")}
-                OutlinedButton(onClick={bmp=bmp?.let{ScanProcessor.rotate(it)}}){Icon(Icons.Default.RotateRight,null);Spacer(Modifier.width(4.dp));Text("Rotate")}
-            }
-            Row(modifier=Modifier.padding(top=8.dp), horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={
-                    val out=File(c.cacheDir,"page_${System.currentTimeMillis()}.jpg")
-                    FileOutputStream(out).use{bmp?.compress(Bitmap.CompressFormat.JPEG,92,it)}
-                    onAdd(out)
-                }){Icon(Icons.Default.Add,null);Spacer(Modifier.width(4.dp));Text("Add Page")}
-                Button(onClick={
-                    val out=File(c.cacheDir,"page_${System.currentTimeMillis()}.jpg")
-                    FileOutputStream(out).use{bmp?.compress(Bitmap.CompressFormat.JPEG,92,it)}
-                    onFinish(out)
-                }){Icon(Icons.Default.Done,null);Spacer(Modifier.width(4.dp));Text("Finish & Save") }
-            }
+    val c=LocalContext.current; var bmp by remember(file){mutableStateOf(ScanProcessor.decode(file))}; var filter by remember{mutableStateOf(SettingsStore.filter(c).ifBlank{"B&W"})}; var showCrop by remember{mutableStateOf(false)}
+    fun savePage():File?=runCatching{val out=File(c.cacheDir,"page_${System.currentTimeMillis()}.jpg");FileOutputStream(out).use{bmp?.compress(Bitmap.CompressFormat.JPEG,95,it)};out}.getOrNull()
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Edit & Enhance",color=Color.White)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}},actions={Button(onClick={savePage()?.let(onFinish)}){Text("Save")}})}){pad->
+        Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)){
+            Box(Modifier.fillMaxWidth().weight(1f).padding(12.dp),contentAlignment=Alignment.Center){bmp?.let{Image(it.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Fit)}}
+            LazyRow(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Original","Auto Enhance","B&W","Color").forEach{label->Card(onClick={filter=if(label=="Original")"Color" else if(label=="Auto Enhance")"High Contrast" else label;SettingsStore.setFilter(c,filter);bmp=bmp?.let{ScanProcessor.filter(it,filter)}},colors=CardDefaults.cardColors(containerColor=if((label=="B&W"&&filter=="B&W")||(label=="Color"&&filter=="Color")||(label=="Auto Enhance"&&filter=="High Contrast") )Color(0xFF27E0B3) else Color(0xFF111820)),modifier=Modifier.width(105.dp)){Column(Modifier.padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.Photo,null,tint=Color.White);Text(label,color=Color.White,style=MaterialTheme.typography.labelSmall)}}}}
+            Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.SpaceEvenly){TextButton({showCrop=true}){Icon(Icons.Default.Crop,null);Text("Crop")};TextButton({bmp=bmp?.let{ScanProcessor.rotate(it)}}){Icon(Icons.Default.RotateRight,null);Text("Rotate")};TextButton({bmp=bmp?.let{ScanProcessor.filter(it,"High Contrast")}}){Icon(Icons.Default.AutoAwesome,null);Text("Enhance")};TextButton({}){Icon(Icons.Default.Tune,null);Text("Filter")};TextButton({bmp=ScanProcessor.decode(file)}){Icon(Icons.Default.Refresh,null);Text("Reset")}}
+            Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){OutlinedButton(onClick={savePage()?.let(onAdd)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Add,null);Text("Add Page")};Button(onClick={savePage()?.let(onFinish)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Done,null);Text("Finish & Save")}}
         }
     }
-    if(showCrop && bmp!=null) {
-        ManualCropDialog(bmp!!, onDismiss={showCrop=false}, onApply={cropped->bmp=cropped;showCrop=false})
-    }
+    if(showCrop&&bmp!=null)ManualCropDialog(bmp!!,{showCrop=false},{x->bmp=x;showCrop=false})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OcrScreen(onBack:()->Unit){
-    val c=LocalContext.current
-    var result by remember{mutableStateOf("")}
-    var loading by remember{mutableStateOf(false)}
-    var cameraMode by remember{mutableStateOf(false)}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri:Uri?->
-        if(uri==null)return@rememberLauncherForActivityResult
-        loading=true
-        val source=InputImage.fromFilePath(c,uri)
-        val a=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        if (SettingsStore.hindiOcr(c)) {
-            val d=TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
-            a.process(source).addOnSuccessListener{en->
-                d.process(source).addOnSuccessListener{hi->
-                    result=(if(hi.text.isNotBlank())hi.text else en.text);loading=false
-                }.addOnFailureListener{result=en.text;loading=false}
-            }.addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
-        } else {
-            a.process(source).addOnSuccessListener{en-> result=en.text; loading=false}
-                .addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
-        }
-    }
-    Scaffold(topBar={TopAppBar(title={Text("OCR Reader")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-            Button(onClick={picker.launch(arrayOf("image/*"))}){Text("Gallery Image")}
-            Button(onClick={cameraMode=true}){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(6.dp));Text("Camera") }
-            if(loading)CircularProgressIndicator()
-            OutlinedTextField(result,{result=it},Modifier.fillMaxWidth().weight(1f),label={Text("Editable OCR text")})
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={c.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("OCR",result))}){Text("Copy")}
-                Button(onClick={
-                    val f=OfficeExporter.docx(c,"OCR_Document",result);ShareUtil.share(c,f,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                }){Text("Word")}
-                Button(onClick={
-                    val f=OfficeExporter.xlsx(c,"OCR_Sheet",result);ShareUtil.share(c,f,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                }){Text("Excel")}
-            }
-        }
-    }
-    if(cameraMode){
-        CameraCapture(Modifier.fillMaxSize(), onCaptured={file->
-            cameraMode=false; loading=true
-            val source=InputImage.fromFilePath(c,Uri.fromFile(file))
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(source).addOnSuccessListener{en->
-                if(SettingsStore.hindiOcr(c)){
-                    TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build()).process(source).addOnSuccessListener{hi->result=if(hi.text.isNotBlank())hi.text else en.text;loading=false}.addOnFailureListener{result=en.text;loading=false}
-                } else { result=en.text;loading=false }
-            }.addOnFailureListener{loading=false;Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
-        })
-    }
+    val c=LocalContext.current; var text by remember{mutableStateOf("")}; var image by remember{mutableStateOf<Bitmap?>(null)}
+    fun runOcr(file:File){val src=runCatching{InputImage.fromFilePath(c,Uri.fromFile(file))}.getOrNull()?:return;TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(src).addOnSuccessListener{en->text=en.text;if(SettingsStore.hindiOcr(c)){TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build()).process(src).addOnSuccessListener{hi->if(hi.text.isNotBlank())text=hi.text}}}.addOnFailureListener{Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}}
+    val gallery=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->uri?.let{copyUriToCache(c,it,"ocr_${System.currentTimeMillis()}.jpg")?.let{f->image=ScanProcessor.decode(f);runOcr(f)}}}
+    val camera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()){b->b?.let{image=it;val f=File(c.cacheDir,"ocr_camera_${System.currentTimeMillis()}.jpg");FileOutputStream(f).use{out->it.compress(Bitmap.CompressFormat.JPEG,95,out)};runOcr(f)}}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("OCR (Text)",color=Color.White)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->Column(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(12.dp)){
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({gallery.launch("image/*")},Modifier.weight(1f)){Icon(Icons.Default.PhotoLibrary,null);Text("Gallery")};OutlinedButton({camera.launch(null)},Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Text("Camera")}}
+        Card(Modifier.fillMaxWidth().weight(1f),colors=CardDefaults.cardColors(containerColor=Color(0xFF0D151C))){Column(Modifier.padding(14.dp)){Text("Recognized Text",color=Color(0xFF27E0B3),fontWeight=FontWeight.Bold);Spacer(Modifier.height(8.dp));if(image!=null)Image(image!!.asImageBitmap(),null,Modifier.fillMaxWidth().height(150.dp),contentScale=androidx.compose.ui.layout.ContentScale.Fit);Text(if(text.isBlank())"Select or capture a document to extract text." else text,color=Color.White,modifier=Modifier.verticalScroll(rememberScrollState()))}}
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton({Toast.makeText(c,"Text copied",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.ContentCopy,null);Text("Copy")};OutlinedButton({exportOcrPages(c,listOfNotNull(image?.let{val f=File(c.cacheDir,"ocr_export.jpg");FileOutputStream(f).use{out->it.compress(Bitmap.CompressFormat.JPEG,95,out)};f}),"OCR_Editable",false){it?.let{ShareUtil.share(c,it,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}}},Modifier.weight(1f)){Text("To Word")};OutlinedButton({Toast.makeText(c,"Use PDF/scan for table-aware Excel conversion",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Text("To Excel")}}
+    }}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConvertScreen(onBack:()->Unit){
-    val c=LocalContext.current
-    var text by remember{mutableStateOf("")}
-    var chosen by remember{mutableStateOf("")}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri==null)return@rememberLauncherForActivityResult
-        chosen=uri.toString()
-        val source=InputImage.fromFilePath(c,uri)
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(source).addOnSuccessListener{recognized->
-            text=recognized.text
-        }
-    }
-    Scaffold(topBar={TopAppBar(title={Text("Image → Editable")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-            Button(onClick={picker.launch(arrayOf("image/*"))}){Text("Choose Photo")}
-            Text(if(chosen.isBlank())"No photo selected" else "Photo selected")
-            OutlinedTextField(text,{text=it},Modifier.fillMaxWidth().weight(1f),label={Text("OCR + layout text")})
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={ShareUtil.share(c,OfficeExporter.docx(c,"Editable_Document",text),"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}){Text("DOCX")}
-                Button(onClick={ShareUtil.share(c,OfficeExporter.xlsx(c,"Editable_Sheet",text),"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}){Text("XLSX")}
-            }
-            Text("Note: complex tables, fonts and exact page geometry are reconstructed approximately; 100% pixel-identical Word/Excel conversion is not guaranteed.")
-        }
-    }
+    val c=LocalContext.current; var chosen by remember{mutableStateOf<File?>(null)}; var mode by remember{mutableStateOf("Word")}; var status by remember{mutableStateOf("Choose an image or PDF")}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->chosen=uri?.let{copyUriToCache(c,it,"convert_${System.currentTimeMillis()}.jpg")};status=if(chosen!=null)"Ready for OCR + layout conversion" else "Choose an image or PDF"}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Convert",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->Column(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally){
+        Card(Modifier.fillMaxWidth().height(180.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Icon(Icons.Default.Description,null,tint=Color(0xFF27E0B3),modifier=Modifier.size(54.dp));Text(status,color=Color.White);Text("OCR + layout reconstruction",color=Color(0xFF8192A3))}}
+        Spacer(Modifier.height(16.dp));Button({picker.launch("image/*")},Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Text("Select Image")};Spacer(Modifier.height(12.dp));Text("Export format",color=Color.White,fontWeight=FontWeight.Bold);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(mode=="Word",{mode="Word"},label={Text("Word")},modifier=Modifier.weight(1f));FilterChip(mode=="Excel",{mode="Excel"},label={Text("Excel")},modifier=Modifier.weight(1f))};Spacer(Modifier.height(12.dp));Button({chosen?.let{exportOcrPages(c,listOf(it),"Converted_Editable",mode=="Excel"){out->if(out!=null)ShareUtil.share(c,out,if(mode=="Excel")"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}}},Modifier.fillMaxWidth()){Icon(Icons.Default.AutoAwesome,null);Text("Convert to Editable $mode")}
+    }}
 }
 
 @Composable
@@ -954,46 +639,15 @@ fun copyUriToCache(c: android.content.Context, uri: Uri, name: String): File? = 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IdScanScreen(onBack:()->Unit,onSaved:()->Unit){
-    val c=LocalContext.current
-    var front by remember{mutableStateOf<File?>(null)}
-    var back by remember{mutableStateOf<File?>(null)}
-    var side by remember{mutableStateOf("front")}
-    var camera by remember{mutableStateOf(false)}
-    var name by remember{mutableStateOf("ID Document")}
-    var showName by remember{mutableStateOf(false)}
-    val gallery=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){u->
-        if(u.size>=2){
-            front=copyUriToCache(c,u[0],"id_front_${System.currentTimeMillis()}.jpg")?.let{prepareScanFile(c,it,"id_front")}
-            back=copyUriToCache(c,u[1],"id_back_${System.currentTimeMillis()}.jpg")?.let{prepareScanFile(c,it,"id_back")}
-        }
-    }
-    if(camera){
-        CameraCapture(Modifier.fillMaxSize()){f->
-            if(side=="front"){front=f;side="back";Toast.makeText(c,"Front saved. Now capture Back",Toast.LENGTH_SHORT).show()}
-            else{back=f;camera=false;Toast.makeText(c,"Front + Back ready",Toast.LENGTH_SHORT).show()}
-        }
-        return
-    }
-    Scaffold(topBar={TopAppBar(title={Text("ID Scan")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        Column(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-            Text("ID Scan",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-            Text("Capture both sides. The final PDF places Front + Back together on one A4 page.")
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={side="front";camera=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(5.dp));Text("Front")}
-                Button(onClick={side="back";camera=true},modifier=Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Spacer(Modifier.width(5.dp));Text("Back")}
-            }
-            OutlinedButton(onClick={gallery.launch(arrayOf("image/*"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(8.dp));Text("Select Front + Back")}
-            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
-                Text(if(front==null)"Front: Not captured" else "Front: ✓ Ready", fontWeight=FontWeight.SemiBold)
-                Text(if(back==null)"Back: Not captured" else "Back: ✓ Ready", fontWeight=FontWeight.SemiBold)
-            }}
-            if(front!=null&&back!=null) Button(onClick={showName=true},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PictureAsPdf,null);Spacer(Modifier.width(8.dp));Text("Preview & Create A4 PDF")}
-        }
-    }
-    if(showName)AlertDialog(onDismissRequest={showName=false},title={Text("Save ID PDF")},text={Column{OutlinedTextField(name,{name=it},singleLine=true,label={Text("Document name")});Spacer(Modifier.height(10.dp));Text("Front + Back will be combined on one A4 page.")}},confirmButton={Button(onClick={
-        val pdf=PdfEngine.createIdCardPdf(c.filesDir,front!!,back!!,name.ifBlank{"ID Document"})
-        if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),name.ifBlank{"ID Document"},pdf.absolutePath));Toast.makeText(c,"ID PDF saved",Toast.LENGTH_SHORT).show();showName=false;onSaved()}
-    }){Text("Save")}},dismissButton={TextButton(onClick={showName=false}){Text("Cancel")}})
+    val c=LocalContext.current; var front by remember{mutableStateOf<File?>(null)};var back by remember{mutableStateOf<File?>(null)};var tab by remember{mutableStateOf("Front")};var showName by remember{mutableStateOf(false)};var name by remember{mutableStateOf("ID Card")}
+    val pick=rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()){uris->if(uris.isNotEmpty()){copyUriToCache(c,uris[0],"id_front.jpg")?.let{front=prepareScanFile(c,it,"id_front")};if(uris.size>1)copyUriToCache(c,uris[1],"id_back.jpg")?.let{back=prepareScanFile(c,it,"id_back")}}}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("ID Card Scan",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->Column(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(12.dp)){
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("Front","Back","Preview").forEach{t->FilterChip(tab==t,{tab=t},label={Text(t)},modifier=Modifier.weight(1f))}}
+        Card(Modifier.fillMaxWidth().weight(1f).padding(vertical=12.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF0C141B))){Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){val f=if(tab=="Back")back else front;if(f!=null){ScanProcessor.decode(f)?.let{Image(it.asImageBitmap(),null,Modifier.fillMaxWidth().padding(12.dp),contentScale=androidx.compose.ui.layout.ContentScale.Fit)}}else{Icon(Icons.Default.CreditCard,null,tint=Color(0xFF27E0B3),modifier=Modifier.size(64.dp));Text("Scan ${tab.lowercase()} side",color=Color.White)}}}
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton({pick.launch("image/*")},Modifier.weight(1f)){Icon(Icons.Default.PhotoLibrary,null);Text("Gallery")};Button({Toast.makeText(c,"Use camera scanner for ${tab.lowercase()} side",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.CameraAlt,null);Text("Camera")}}
+        Text("A4 output • Front + Back on one page",color=Color(0xFF8192A3),modifier=Modifier.padding(8.dp));Button({if(front!=null&&back!=null)showName=true},Modifier.fillMaxWidth(),enabled=front!=null&&back!=null){Icon(Icons.Default.PictureAsPdf,null);Text("Preview & Create A4 PDF")}
+    }}
+    if(showName)AlertDialog(onDismissRequest={showName=false},title={Text("Save ID PDF")},text={OutlinedTextField(name,{name=it},singleLine=true,label={Text("Document name")})},confirmButton={Button({val pdf=PdfEngine.createIdCardPdf(c.filesDir,front!!,back!!,name.ifBlank{"ID Card"});if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),name.ifBlank{"ID Card"},pdf.absolutePath));showName=false;onSaved()}}){Text("Save")}},dismissButton={TextButton({showName=false}){Text("Cancel")}})
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1028,58 +682,20 @@ fun BarcodeScreen(onBack:()->Unit){
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfToolsScreen(onBack:()->Unit){
-    val c=LocalContext.current
-    var message by remember{mutableStateOf("Choose a PDF tool")}
-    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
-        if(uris.isNotEmpty()){
-            val fs=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"pdf_image_${System.currentTimeMillis()}_$idx.jpg")}
-            val pdf=PdfEngine.createPdfAuto(c.filesDir,fs,SettingsStore.pdfMode(c),SettingsStore.maxSizeChoice(c),SettingsStore.paperSize(c),"Images_to_PDF")
-            if(pdf!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Images to PDF",pdf.absolutePath));message="Created ${pdf.name}";ShareUtil.share(c,pdf,"application/pdf")}
-        }
-    }
-    val pdfMulti=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->
-        if(uris.size>=2){
-            val fs=uris.mapIndexedNotNull{idx,u->copyUriToCache(c,u,"merge_${System.currentTimeMillis()}_$idx.pdf")}
-            val out=PdfEngine.mergePdfs(c.filesDir,fs,"Merged_Document")
-            if(out!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Merged Document",out.absolutePath));message="Merged ${fs.size} PDFs";ShareUtil.share(c,out,"application/pdf")}else message="Select at least 2 valid PDFs"
-        } else message="Select at least 2 PDFs to merge"
-    }
-    val onePdf=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri==null)return@rememberLauncherForActivityResult
-        val f=copyUriToCache(c,uri,"pdf_tool_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
-        val outs=PdfEngine.splitPdf(c.filesDir,f)
-        outs.forEachIndexed{idx,out->DocumentStore.add(c,DocumentRecord(System.currentTimeMillis()+idx,"${f.nameWithoutExtension} Page ${idx+1}",out.absolutePath))}
-        message="Split into ${outs.size} page PDFs"
-    }
-    val compressPdf=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri==null)return@rememberLauncherForActivityResult
-        val f=copyUriToCache(c,uri,"compress_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
-        val out=PdfEngine.compressPdf(c.filesDir,f,"Compressed_${f.nameWithoutExtension}")
-        if(out!=null){DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Compressed PDF",out.absolutePath));message="Compressed PDF created";ShareUtil.share(c,out,"application/pdf")}else message="Compression failed"
-    }
-    val pageExport=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
-        if(uri==null)return@rememberLauncherForActivityResult
-        val f=copyUriToCache(c,uri,"export_${System.currentTimeMillis()}.pdf") ?: return@rememberLauncherForActivityResult
-        val outs=PdfEngine.pdfToImages(f,c.filesDir)
-        if (outs.isNotEmpty()) {
-            val zip=zipFiles(c.filesDir, "${f.nameWithoutExtension}_images", outs)
-            outs.forEach { it.delete() }
-            if (zip != null) { message="Exported ${outs.size} pages"; ShareUtil.share(c,zip,"application/zip") }
-            else message="Image export failed"
-        } else message="No pages found"
-    }
-    Scaffold(topBar={TopAppBar(title={Text("PDF Tools")},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}})}){pad->
-        LazyColumn(Modifier.padding(pad).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-            item{Text("PDF tools",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
-            item{Text("All common actions are available from this page.",style=MaterialTheme.typography.bodySmall)}
-            item{Button(onClick={imagePicker.launch(arrayOf("image/*"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(8.dp));Text("Images → PDF")}}
-            item{Button(onClick={pdfMulti.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Merge,null);Spacer(Modifier.width(8.dp));Text("Merge Multiple PDFs")}}
-            item{Button(onClick={onePdf.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.ContentCut,null);Spacer(Modifier.width(8.dp));Text("Split PDF into Pages")}}
-            item{Button(onClick={compressPdf.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Compress,null);Spacer(Modifier.width(8.dp));Text("Compress PDF")}}
-            item{OutlinedButton(onClick={pageExport.launch(arrayOf("application/pdf"))},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Image,null);Spacer(Modifier.width(8.dp));Text("PDF → Images")}}
-            item{Card(Modifier.fillMaxWidth()){Text(message,Modifier.padding(16.dp))}}
-        }
-    }
+    val c=LocalContext.current;var message by remember{mutableStateOf("Choose a PDF tool")}
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->val fs=uris.mapIndexedNotNull{i,u->copyUriToCache(c,u,"img_${System.currentTimeMillis()}_$i.jpg")};if(fs.isNotEmpty())PdfEngine.createPdfAuto(c.filesDir,fs,PdfEngine.SizeMode.MAXIMUM,SettingsStore.maxSizeChoice(c),SettingsStore.paperSize(c),"Images_to_PDF")?.let{DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Images to PDF",it.absolutePath));message="Images converted to PDF"}}
+    val merge=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->val fs=uris.mapIndexedNotNull{i,u->copyUriToCache(c,u,"merge_${System.currentTimeMillis()}_$i.pdf")};if(fs.size>=2)PdfEngine.mergePdfs(c.filesDir,fs,"Merged_Document")?.let{message="Merged ${fs.size} PDFs"}else message="Select at least 2 PDFs"}
+    val one=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"split.pdf")?.let{f->message="Split into ${PdfEngine.splitPdf(c.filesDir,f).size} pages"}}}
+    val comp=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"compress.pdf")?.let{f->message=if(PdfEngine.compressPdf(c.filesDir,f,"Compressed")!=null)"Compressed PDF created" else "Compression failed"}}}
+    val export=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"export.pdf")?.let{f->val outs=PdfEngine.pdfToImages(f,c.filesDir);val z=zipFiles(c.filesDir,"PDF_Images",outs);if(z!=null)ShareUtil.share(c,z,"application/zip");message="Exported ${outs.size} page(s)"}}}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("PDF Tools",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->LazyColumn(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        item{Text("All PDF tools",color=Color.White,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
+        item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){ToolCard("Merge PDF","Combine multiple PDFs",Icons.Default.Merge,{merge.launch(arrayOf("application/pdf"))},Modifier.weight(1f));ToolCard("Split PDF","Split into pages",Icons.Default.ContentCut,{one.launch(arrayOf("application/pdf"))},Modifier.weight(1f))}}
+        item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){ToolCard("Compress PDF","Reduce file size",Icons.Default.Compress,{comp.launch(arrayOf("application/pdf"))},Modifier.weight(1f));ToolCard("PDF to Images","Extract all pages",Icons.Default.Image,{export.launch(arrayOf("application/pdf"))},Modifier.weight(1f))}}
+        item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){ToolCard("Images to PDF","Convert images to PDF",Icons.Default.PhotoLibrary,{imagePicker.launch(arrayOf("image/*"))},Modifier.weight(1f));ToolCard("Reorder Pages","Arrange pages",Icons.Default.Reorder,{message="Reorder available from scan editor"},Modifier.weight(1f))}}
+        item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){ToolCard("Add Password","Protect your PDF",Icons.Default.Lock,{message="Password protection coming next"},Modifier.weight(1f));ToolCard("Remove Password","Unlock your PDF",Icons.Default.LockOpen,{message="Password removal coming next"},Modifier.weight(1f))}}
+        item{Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Text(message,color=Color(0xFFB6C3CF),modifier=Modifier.padding(16.dp))}}
+    }}
 }
 
 private fun zipFiles(dir: File, baseName: String, files: List<File>): File? = runCatching {
@@ -1120,92 +736,15 @@ private fun exportOcrPages(context: android.content.Context, images: List<File>,
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewerScreen(file:File,onBack:()->Unit){
-    val c=LocalContext.current
-    var pageIndex by remember{mutableIntStateOf(0)}
-    var bitmap by remember{mutableStateOf<Bitmap?>(null)}
-    var pageCount by remember{mutableIntStateOf(0)}
-    var showRename by remember{mutableStateOf(false)}
-    var newName by remember{mutableStateOf(file.nameWithoutExtension)}
-    var showDelete by remember{mutableStateOf(false)}
-    LaunchedEffect(file){
-        runCatching{
-            val pfd=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer=PdfRenderer(pfd); pageCount=renderer.pageCount
-            if(pageCount>0){val p=renderer.openPage(0);val b=Bitmap.createBitmap(p.width*2,p.height*2,Bitmap.Config.ARGB_8888);b.eraseColor(android.graphics.Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);bitmap=b;p.close()}
-            renderer.close();pfd.close()
-        }
-    }
-    fun render(index:Int){
-        runCatching{
-            val pfd=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);val r=PdfRenderer(pfd);val p=r.openPage(index);val b=Bitmap.createBitmap(p.width*2,p.height*2,Bitmap.Config.ARGB_8888);b.eraseColor(android.graphics.Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);bitmap?.recycle();bitmap=b;p.close();r.close();pfd.close();pageIndex=index
-        }
-    }
-    Scaffold(topBar={TopAppBar(title={Text(file.name)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null)}},actions={
-        IconButton(onClick={showRename=true}){Icon(Icons.Default.Edit,null)}
-        IconButton(onClick={ShareUtil.share(c,file,"application/pdf")}){Icon(Icons.Default.Share,null)}
-        IconButton(onClick={showDelete=true}){Icon(Icons.Default.Delete,null)}
-    })}){pad->
-        Column(Modifier.padding(pad).fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally){
-            bitmap?.let{Image(it.asImageBitmap(),"PDF page",Modifier.fillMaxWidth().weight(1f).padding(8.dp))}
-            Row(verticalAlignment=Alignment.CenterVertically){
-                IconButton(enabled=pageIndex>0,onClick={render(pageIndex-1)}){Icon(Icons.Default.ChevronLeft,null)}
-                Text("Page ${if(pageCount==0)0 else pageIndex+1} / $pageCount",fontWeight=FontWeight.SemiBold)
-                IconButton(enabled=pageIndex<pageCount-1,onClick={render(pageIndex+1)}){Icon(Icons.Default.ChevronRight,null)}
-            }
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(bottom=12.dp)){
-                OutlinedButton(onClick={ShareUtil.share(c,file,"application/pdf")}){Icon(Icons.Default.Share,null);Spacer(Modifier.width(4.dp));Text("Share")}
-                OutlinedButton(onClick={
-                    val outs=PdfEngine.pdfToImages(file,c.filesDir)
-                    Toast.makeText(c,"Exported ${outs.size} page(s) as images",Toast.LENGTH_SHORT).show()
-                }){Icon(Icons.Default.Image,null);Spacer(Modifier.width(4.dp));Text("Pages")}
-                Button(onClick={
-                    val outs=PdfEngine.pdfToImages(file,c.filesDir)
-                    if(outs.isNotEmpty()){
-                        val source=InputImage.fromFilePath(c,Uri.fromFile(outs[pageIndex.coerceAtMost(outs.lastIndex)]))
-                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(source).addOnSuccessListener{Toast.makeText(c,it.text.ifBlank{"No text found"},Toast.LENGTH_LONG).show()}.addOnFailureListener{Toast.makeText(c,"OCR failed",Toast.LENGTH_SHORT).show()}
-                    }
-                }){Icon(Icons.Default.TextFields,null);Spacer(Modifier.width(4.dp));Text("OCR")}
-            }
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(bottom=12.dp)){
-                Button(onClick={
-                    val outs=PdfEngine.pdfToImages(file,c.filesDir)
-                    exportOcrPages(c, outs, file.nameWithoutExtension + "_Editable", false) { out ->
-                        if(out!=null) ShareUtil.share(c,out,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                        outs.forEach{it.delete()}
-                    }
-                }){Text("Word (Editable)")}
-                OutlinedButton(onClick={
-                    val outs=PdfEngine.pdfToImages(file,c.filesDir)
-                    exportOcrPages(c, outs, file.nameWithoutExtension + "_Editable", true) { out ->
-                        if(out!=null) ShareUtil.share(c,out,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                        outs.forEach{it.delete()}
-                    }
-                }){Text("Excel (Editable)")}
-            }
-        }
-    }
-    if(showRename) AlertDialog(
-        onDismissRequest={showRename=false},
-        title={Text("Rename PDF")},
-        text={OutlinedTextField(newName,{newName=it},singleLine=true,label={Text("Document name")})},
-        confirmButton={Button(onClick={
-            val clean=newName.trim().ifBlank{file.nameWithoutExtension}
-            val renamed=File(file.parentFile, "$clean.pdf")
-            if(file.renameTo(renamed)) {
-                DocumentStore.all(c).firstOrNull { it.path == file.absolutePath }?.let { DocumentStore.update(c, it.copy(name = clean, path = renamed.absolutePath)) }
-                Toast.makeText(c,"Renamed",Toast.LENGTH_SHORT).show()
-            } else Toast.makeText(c,"Rename failed",Toast.LENGTH_SHORT).show()
-            showRename=false
-        }){Text("Save")}},
-        dismissButton={TextButton(onClick={showRename=false}){Text("Cancel")}}
-    )
-    if(showDelete) AlertDialog(
-        onDismissRequest={showDelete=false}, title={Text("Delete PDF?")}, text={Text("This document will be removed from SmartDoc.")},
-        confirmButton={Button(onClick={
-            DocumentStore.all(c).firstOrNull{it.path==file.absolutePath}?.let{DocumentStore.delete(c,it)} ?: file.delete()
-            showDelete=false; onBack()
-        }){Text("Delete")}},
-        dismissButton={TextButton(onClick={showDelete=false}){Text("Cancel")}}
-    )
-
+    val c=LocalContext.current;var page by remember{mutableIntStateOf(0)};var count by remember{mutableIntStateOf(0)};var bmp by remember{mutableStateOf<Bitmap?>(null)};var rename by remember{mutableStateOf(false)};var newName by remember{mutableStateOf(file.nameWithoutExtension)}
+    fun render(i:Int){runCatching{val pfd=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);val r=PdfRenderer(pfd);count=r.pageCount;val p=r.openPage(i);val b=Bitmap.createBitmap(p.width*2,p.height*2,Bitmap.Config.ARGB_8888);b.eraseColor(android.graphics.Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);p.close();r.close();pfd.close();bmp=b;page=i}}
+    LaunchedEffect(file){render(0)}
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text(file.name,color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}},actions={IconButton({rename=true}){Icon(Icons.Default.Edit,null,tint=Color.White)};IconButton({ShareUtil.share(c,file,"application/pdf")}){Icon(Icons.Default.Share,null,tint=Color.White)};IconButton({}){Icon(Icons.Default.MoreVert,null,tint=Color.White)}})}){pad->Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)){
+        Card(Modifier.fillMaxWidth().weight(1f).padding(10.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){bmp?.let{Image(it.asImageBitmap(),null,Modifier.fillMaxSize().padding(8.dp),contentScale=androidx.compose.ui.layout.ContentScale.Fit)}}
+        Text("${page+1}/$count",color=Color.White,modifier=Modifier.align(Alignment.CenterHorizontally))
+        LazyRow(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){items(count){i->Card(onClick={render(i)},border=if(i==page)androidx.compose.foundation.BorderStroke(2.dp,Color(0xFF27E0B3)) else null){Text("${i+1}",color=Color.White,modifier=Modifier.padding(16.dp))}}}}
+        Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton({ShareUtil.share(c,file,"application/pdf")},Modifier.weight(1f)){Icon(Icons.Default.Share,null);Text("Share")};OutlinedButton({Toast.makeText(c,"Rename from the edit menu",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Edit,null);Text("Rename")};Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);Toast.makeText(c,"Exported ${outs.size} images",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Image,null);Text("Pages")}}
+        Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",false){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}},Modifier.weight(1f)){Text("Text (OCR)")};OutlinedButton({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",true){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}},Modifier.weight(1f)){Text("More")}}
+    }}
+    if(rename)AlertDialog(onDismissRequest={rename=false},title={Text("Rename PDF")},text={OutlinedTextField(newName,{newName=it},singleLine=true)},confirmButton={Button({val n=newName.trim().ifBlank{file.nameWithoutExtension};val out=File(file.parentFile,"$n.pdf");file.renameTo(out);rename=false}){Text("Save")}},dismissButton={TextButton({rename=false}){Text("Cancel")}})
 }
