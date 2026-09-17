@@ -136,7 +136,20 @@ private fun SafeCameraPreview(modifier: Modifier, onCaptured: (File) -> Unit) {
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({ runCatching { val provider = future.get(); val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }; val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).setJpegQuality(95).build(); provider.unbindAll(); val bound = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture); imageCapture = capture; camera = bound; ready = true }.onFailure { Toast.makeText(context, "Camera could not start", Toast.LENGTH_LONG).show() } }, androidx.core.content.ContextCompat.getMainExecutor(context))
     }
-    DisposableEffect(camera) { if (camera != null) previewView.setOnTouchListener { _, event -> if (event.action == android.view.MotionEvent.ACTION_UP) runCatching { val point = previewView.meteringPointFactory.createPoint(event.x, event.y); camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build()) }; true else true } else Unit; onDispose { previewView.setOnTouchListener(null) } }
+    DisposableEffect(camera) {
+        if (camera != null) {
+            previewView.setOnTouchListener { _, event ->
+                if (event.action == android.view.MotionEvent.ACTION_UP) {
+                    runCatching {
+                        val point = previewView.meteringPointFactory.createPoint(event.x, event.y)
+                        camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
+                    }
+                }
+                true
+            }
+        }
+        onDispose { previewView.setOnTouchListener(null) }
+    }
     DisposableEffect(Unit) { onDispose { executor.shutdownNow() } }
     Box(modifier.background(Color.Black)) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
