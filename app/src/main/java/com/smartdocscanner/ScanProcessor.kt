@@ -11,7 +11,18 @@ import kotlin.math.roundToInt
 object ScanProcessor {
     data class Quad(val p: Array<PointF>, val width: Int, val height: Int)
 
-    fun decode(file: File): Bitmap? = BitmapFactory.decodeFile(file.absolutePath)
+    fun decode(file: File): Bitmap? {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, opts)
+        val maxSide = 2200
+        var sample = 1
+        while (max(opts.outWidth, opts.outHeight) / sample > maxSide) sample *= 2
+        val actual = BitmapFactory.Options().apply {
+            inSampleSize = sample.coerceAtLeast(1)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeFile(file.absolutePath, actual)
+    }
 
     fun autoCrop(src: Bitmap): Bitmap {
         if (src.width < 80 || src.height < 80) return src.copy(Bitmap.Config.ARGB_8888, false)
