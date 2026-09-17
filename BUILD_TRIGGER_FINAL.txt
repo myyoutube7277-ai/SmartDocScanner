@@ -1,1 +1,1 @@
-Trigger final verified SmartDocScanner build - scanner crop compile fixes 2026-09-18.
+Trigger final verified SmartDocScanner build after scanner repair 2026-09-18.
