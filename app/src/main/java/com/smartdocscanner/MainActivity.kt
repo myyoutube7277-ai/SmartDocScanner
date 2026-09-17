@@ -112,14 +112,14 @@ fun SmartDocApp() {
                 onBack = { screen = "home" },
                 onChanged = { settingsVersion++ }
             )
-            "scan" -> ScannerScreen(
+            "scan" -> ScannerScreenFixed(
                 onBack = { screen = "home" },
                 onSaved = { refresh++; screen = "home" }
             )
             "ocr" -> OcrScreen(onBack = { screen = "home" })
             "convert" -> ConvertScreen(onBack = { screen = "home" })
             "barcode" -> BarcodeScreen(onBack = { screen = "home" })
-            "idscan" -> IdScanScreen(onBack = { screen = "home" }, onSaved = { refresh++; screen = "home" })
+            "idscan" -> IdScanScreenFixed(onBack = { screen = "home" }, onSaved = { refresh++; screen = "home" })
             "pdf" -> PdfToolsScreen(onBack = { screen = "home" })
             "viewer" -> selectedFile?.let { ViewerScreen(it, onBack = { screen = "home" }) }
             "help" -> HelpScreen(onBack = { screen = "home" })
