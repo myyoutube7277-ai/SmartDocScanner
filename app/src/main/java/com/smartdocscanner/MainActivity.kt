@@ -637,7 +637,7 @@ fun ConvertScreen(onBack:()->Unit){
     var status by remember{mutableStateOf("Choose an image")}
     var busy by remember{mutableStateOf(false)}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->
-        chosen=uri?.let{copyUriToCache(c,it,"convert_\${System.currentTimeMillis()}.jpg")}
+        chosen=uri?.let{copyUriToCache(c,it,"convert_${System.currentTimeMillis()}.jpg")}
         status=if(chosen!=null)"Ready to convert" else "Choose an image"
     }
     Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Convert",color=Color.White)},navigationIcon={IconButton(onClick={onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->
@@ -650,7 +650,7 @@ fun ConvertScreen(onBack:()->Unit){
                 }
             }
             Spacer(Modifier.height(14.dp))
-            Button(enabled=!busy,onClick={picker.launch("image/*")},Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(6.dp));Text("Select Image")}
+            Button(enabled=!busy,onClick={picker.launch("image/*")},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(6.dp));Text("Select Image")}
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 FilterChip(mode=="Word",{mode="Word"},label={Text("Word")},modifier=Modifier.weight(1f))
@@ -671,7 +671,7 @@ fun ConvertScreen(onBack:()->Unit){
                         if(out!=null&&out.exists()&&out.length()>0)ShareUtil.share(c,out,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")else Toast.makeText(c,"Excel export failed",Toast.LENGTH_LONG).show()
                     }
                 }
-            },Modifier.fillMaxWidth()){Icon(Icons.Default.AutoAwesome,null);Spacer(Modifier.width(6.dp));Text(if(busy)"Converting…" else "Convert to $mode")}
+            },modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.AutoAwesome,null);Spacer(Modifier.width(6.dp));Text(if(busy)"Converting…" else "Convert to $mode")}
             if(busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top=10.dp))
             Spacer(Modifier.height(12.dp))
             Text("Files are automatically saved in SmartDocScanner → My Files. Share is available after export.",color=Color(0xFF9CAFC0))
