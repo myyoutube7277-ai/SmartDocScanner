@@ -12,6 +12,9 @@ object SettingsStore {
     fun autoCrop(c: Context): Boolean = p(c).getBoolean("auto_crop", true)
     fun setAutoCrop(c: Context, value: Boolean) = p(c).edit().putBoolean("auto_crop", value).apply()
 
+    fun autoSave(c: Context): Boolean = p(c).getBoolean("auto_save", true)
+    fun setAutoSave(c: Context, value: Boolean) = p(c).edit().putBoolean("auto_save", value).apply()
+
     fun hindiOcr(c: Context): Boolean = p(c).getBoolean("hindi_ocr", true)
     fun setHindiOcr(c: Context, value: Boolean) = p(c).edit().putBoolean("hindi_ocr", value).apply()
 
