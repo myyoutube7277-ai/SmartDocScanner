@@ -317,7 +317,7 @@ private fun ScannerEditor(
     }
 
     if (cropOpen && processed != null) {
-        ManualCropDialog(processed!!, onDismiss = { cropOpen = false }) { cropped ->
+        ScannerManualCropDialog(processed!!, onDismiss = { cropOpen = false }) { cropped ->
             base = cropped
             rotation = 0
             autoApplied = false
@@ -327,7 +327,7 @@ private fun ScannerEditor(
 }
 
 @Composable
-private fun ManualCropDialog(bitmap: Bitmap, onDismiss: () -> Unit, onApply: (Bitmap) -> Unit) {
+private fun ScannerManualCropDialog(bitmap: Bitmap, onDismiss: () -> Unit, onApply: (Bitmap) -> Unit) {
     var tl by remember(bitmap) { mutableStateOf(Offset(.06f, .06f)) }
     var tr by remember(bitmap) { mutableStateOf(Offset(.94f, .06f)) }
     var br by remember(bitmap) { mutableStateOf(Offset(.94f, .94f)) }
