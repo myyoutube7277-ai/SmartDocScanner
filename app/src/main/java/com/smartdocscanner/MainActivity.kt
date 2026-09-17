@@ -17,6 +17,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -714,22 +715,53 @@ private fun exportOcrPages(context: android.content.Context, images: List<File>,
     if (images.isEmpty()) { onDone(null); return }
     val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     val results = mutableListOf<String>()
+
     fun next(index: Int) {
         if (index >= images.size) {
-            val out = if (excel) OfficeExporter.xlsx(context, title, results.joinToString("\n\n"))
-            else OfficeExporter.docx(context, title, results.joinToString("\n\n"))
-            onDone(out); return
+            val text = results.joinToString("\n\n")
+            val out = if (excel) {
+                OfficeExporter.xlsx(context, title, text)
+            } else {
+                OfficeExporter.docx(context, title, text)
+            }
+            onDone(out)
+            return
         }
-        val source = runCatching { InputImage.fromFilePath(context, Uri.fromFile(images[index])) }.getOrNull()
-        if (source == null) { results += ""; next(index + 1); return }
-        recognizer.process(source).addOnSuccessListener { en ->
-            if (SettingsStore.hindiOcr(context)) {
-                TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build()).process(source)
-                    .addOnSuccessListener { hi -> results += if (hi.text.isNotBlank()) hi.text else en.text; next(index + 1) }
-                    .addOnFailureListener { results += en.text; next(index + 1) }
-            } else { results += en.text; next(index + 1) }
-        }.addOnFailureListener { results += ""; next(index + 1) }
+
+        val source = runCatching {
+            InputImage.fromFilePath(context, Uri.fromFile(images[index]))
+        }.getOrNull()
+
+        if (source == null) {
+            results += ""
+            next(index + 1)
+            return
+        }
+
+        recognizer.process(source)
+            .addOnSuccessListener { en ->
+                if (SettingsStore.hindiOcr(context)) {
+                    TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
+                        .process(source)
+                        .addOnSuccessListener { hi ->
+                            results += if (hi.text.isNotBlank()) hi.text else en.text
+                            next(index + 1)
+                        }
+                        .addOnFailureListener {
+                            results += en.text
+                            next(index + 1)
+                        }
+                } else {
+                    results += en.text
+                    next(index + 1)
+                }
+            }
+            .addOnFailureListener {
+                results += ""
+                next(index + 1)
+            }
     }
+
     next(0)
 }
 
