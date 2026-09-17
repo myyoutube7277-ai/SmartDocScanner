@@ -361,8 +361,8 @@ private fun ScannerManualCropDialog(bitmap: Bitmap, onDismiss: () -> Unit, onApp
                         Modifier.fillMaxSize().pointerInput(bitmap) {
                             detectDragGestures(
                                 onDragStart = { pos ->
-                                    val w = size.width.coerceAtLeast(1f)
-                                    val h = size.height.coerceAtLeast(1f)
+                                    val w = size.width.coerceAtLeast(1).toFloat()
+                                    val h = size.height.coerceAtLeast(1).toFloat()
                                     val points = listOf(tl, tr, br, bl)
                                     active = points.indices.minByOrNull { i ->
                                         val dx = pos.x - points[i].x * w
@@ -374,8 +374,8 @@ private fun ScannerManualCropDialog(bitmap: Bitmap, onDismiss: () -> Unit, onApp
                                 onDragCancel = { active = -1 },
                                 onDrag = { change, amount ->
                                     change.consume()
-                                    val w = size.width.coerceAtLeast(1f)
-                                    val h = size.height.coerceAtLeast(1f)
+                                    val w = size.width.coerceAtLeast(1).toFloat()
+                                    val h = size.height.coerceAtLeast(1).toFloat()
                                     fun move(p: Offset) = Offset(
                                         (p.x + amount.x / w).coerceIn(.02f, .98f),
                                         (p.y + amount.y / h).coerceIn(.02f, .98f)
