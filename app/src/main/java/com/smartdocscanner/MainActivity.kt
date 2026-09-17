@@ -450,7 +450,7 @@ fun SettingsScreen(onBack:()->Unit,onChanged:()->Unit){
         item{SettingsRow("Auto Save to Draft","Save immediately after capture",true,{})}
         item{SettingsRow("Maximum PDF Size",size,false,onClick={size=when(size){"500 KB"->"1 MB";"1 MB"->"2 MB";"2 MB"->"5 MB";"5 MB"->"10 MB";else->"500 KB"};SettingsStore.setMaxSizeChoice(c,size);onChanged()})}
         item{SettingsRow("Hindi / Devanagari OCR","Recognize Hindi text",hindi,{v->hindi=v;SettingsStore.setHindiOcr(c,v);onChanged()})}
-        item{Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Column(Modifier.padding(16.dp)){Text("SmartDocScanner",color=Color.White,fontWeight=FontWeight.Bold);Text("Dark modern document workspace",color=Color(0xFF8192A3))}}
+        item{Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Column(Modifier.padding(16.dp)){Text("SmartDocScanner",color=Color.White,fontWeight=FontWeight.Bold);Text("Dark modern document workspace",color=Color(0xFF8192A3))}}}
     }}
 }
 
@@ -777,6 +777,6 @@ fun ViewerScreen(file:File,onBack:()->Unit){
         LazyRow(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){items(count){i->Card(onClick={render(i)},border=if(i==page)androidx.compose.foundation.BorderStroke(2.dp,Color(0xFF27E0B3)) else null){Text("${i+1}",color=Color.White,modifier=Modifier.padding(16.dp))}}}}
         Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton({ShareUtil.share(c,file,"application/pdf")},Modifier.weight(1f)){Icon(Icons.Default.Share,null);Text("Share")};OutlinedButton({Toast.makeText(c,"Rename from the edit menu",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Edit,null);Text("Rename")};Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);Toast.makeText(c,"Exported ${outs.size} images",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Image,null);Text("Pages")}}
         Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",false){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}},Modifier.weight(1f)){Text("Text (OCR)")};OutlinedButton({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",true){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}},Modifier.weight(1f)){Text("More")}}
-    }}
+    }
     if(rename)AlertDialog(onDismissRequest={rename=false},title={Text("Rename PDF")},text={OutlinedTextField(newName,{newName=it},singleLine=true)},confirmButton={Button({val n=newName.trim().ifBlank{file.nameWithoutExtension};val out=File(file.parentFile,"$n.pdf");file.renameTo(out);rename=false}){Text("Save")}},dismissButton={TextButton({rename=false}){Text("Cancel")}})
 }
