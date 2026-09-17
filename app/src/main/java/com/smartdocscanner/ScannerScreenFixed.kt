@@ -206,6 +206,7 @@ fun ScannerScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScannerEditor(
     file: File,
