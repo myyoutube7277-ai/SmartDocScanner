@@ -631,14 +631,53 @@ fun OcrScreen(onBack:()->Unit){
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConvertScreen(onBack:()->Unit){
-    val c=LocalContext.current; var chosen by remember{mutableStateOf<File?>(null)}; var mode by remember{mutableStateOf("Word")}; var status by remember{mutableStateOf("Choose an image or PDF")}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->chosen=uri?.let{copyUriToCache(c,it,"convert_${System.currentTimeMillis()}.jpg")};status=if(chosen!=null)"Ready for OCR + layout conversion" else "Choose an image or PDF"}
-    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Convert",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->Column(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(16.dp),horizontalAlignment=Alignment.CenterHorizontally){
-        Card(Modifier.fillMaxWidth().height(180.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Icon(Icons.Default.Description,null,tint=Color(0xFF27E0B3),modifier=Modifier.size(54.dp));Text(status,color=Color.White);Text("OCR + layout reconstruction",color=Color(0xFF8192A3))}}
-        Spacer(Modifier.height(16.dp));Button({picker.launch("image/*")},Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Text("Select Image")};Spacer(Modifier.height(12.dp));Text("Export format",color=Color.White,fontWeight=FontWeight.Bold);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(mode=="Word",{mode="Word"},label={Text("Word")},modifier=Modifier.weight(1f));FilterChip(mode=="Excel",{mode="Excel"},label={Text("Excel")},modifier=Modifier.weight(1f))};Spacer(Modifier.height(12.dp));Button({chosen?.let{exportOcrPages(c,listOf(it),"Converted_Editable",mode=="Excel"){out->if(out!=null)ShareUtil.share(c,out,if(mode=="Excel")"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}}},Modifier.fillMaxWidth()){Icon(Icons.Default.AutoAwesome,null);Text("Convert to Editable $mode")}
-    }}
+    val c=LocalContext.current
+    var chosen by remember{mutableStateOf<File?>(null)}
+    var mode by remember{mutableStateOf("Word")}
+    var status by remember{mutableStateOf("Choose an image")}
+    var busy by remember{mutableStateOf(false)}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){uri->
+        chosen=uri?.let{copyUriToCache(c,it,"convert_\${System.currentTimeMillis()}.jpg")}
+        status=if(chosen!=null)"Ready to convert" else "Choose an image"
+    }
+    Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Convert",color=Color.White)},navigationIcon={IconButton(onClick={onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->
+        Column(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(16.dp)){
+            Card(Modifier.fillMaxWidth().height(160.dp),colors=CardDefaults.cardColors(containerColor=Color(0xFF101820))){
+                Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
+                    Icon(Icons.Default.Description,null,tint=Color(0xFF27E0B3),modifier=Modifier.size(52.dp))
+                    Text(status,color=Color.White)
+                    Text("Word = page layout • Excel = rows / columns",color=Color(0xFF8192A3))
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(enabled=!busy,onClick={picker.launch("image/*")},Modifier.fillMaxWidth()){Icon(Icons.Default.PhotoLibrary,null);Spacer(Modifier.width(6.dp));Text("Select Image")}
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                FilterChip(mode=="Word",{mode="Word"},label={Text("Word")},modifier=Modifier.weight(1f))
+                FilterChip(mode=="Excel",{mode="Excel"},label={Text("Excel")},modifier=Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+            Button(enabled=chosen!=null&&!busy,onClick={
+                val f=chosen ?: return@Button
+                busy=true
+                if(mode=="Word"){
+                    Thread {
+                        val out=OfficeExporter.docxFromImages(c,"Converted_PageLayout",listOf(f))
+                        android.os.Handler(android.os.Looper.getMainLooper()).post{busy=false;if(out.exists()&&out.length()>0)ShareUtil.share(c,out,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")else Toast.makeText(c,"Word export failed",Toast.LENGTH_LONG).show()}
+                    }.start()
+                }else{
+                    exportOcrPages(c,listOf(f),"Converted_Table",true){out->
+                        busy=false
+                        if(out!=null&&out.exists()&&out.length()>0)ShareUtil.share(c,out,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")else Toast.makeText(c,"Excel export failed",Toast.LENGTH_LONG).show()
+                    }
+                }
+            },Modifier.fillMaxWidth()){Icon(Icons.Default.AutoAwesome,null);Spacer(Modifier.width(6.dp));Text(if(busy)"Converting…" else "Convert to $mode")}
+            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top=10.dp))
+            Spacer(Modifier.height(12.dp))
+            Text("Files are automatically saved in SmartDocScanner → My Files. Share is available after export.",color=Color(0xFF9CAFC0))
+        }
+    }
 }
-
 @Composable
 fun ManualCropDialog(source: Bitmap, onDismiss:()->Unit, onApply:(Bitmap)->Unit){
     var left by remember{mutableFloatStateOf(0f)}
