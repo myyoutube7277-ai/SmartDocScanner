@@ -6,13 +6,6 @@ object SettingsStore {
     private const val PREF = "smartdoc_settings"
     private fun p(c: Context) = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
-    fun migrate(c: Context) {
-        val prefs = p(c)
-        if (!prefs.getBoolean("safe_defaults_v2", false)) {
-            prefs.edit().putString("filter", "Color").putBoolean("safe_defaults_v2", true).apply()
-        }
-    }
-
     fun darkTheme(c: Context): Boolean = p(c).getBoolean("dark_theme", true)
     fun setDarkTheme(c: Context, value: Boolean) = p(c).edit().putBoolean("dark_theme", value).apply()
 
@@ -47,10 +40,7 @@ object SettingsStore {
         p(c).edit().putString("paper_size", value).apply()
 
     fun filter(c: Context): String =
-        p(c).getString("filter", "Color") ?: "Color"
-
-    fun autoSave(c: Context): Boolean = p(c).getBoolean("auto_save", true)
-    fun setAutoSave(c: Context, value: Boolean) = p(c).edit().putBoolean("auto_save", value).apply()
+        p(c).getString("filter", "B&W") ?: "B&W"
 
     fun setFilter(c: Context, value: String) =
         p(c).edit().putString("filter", value).apply()
