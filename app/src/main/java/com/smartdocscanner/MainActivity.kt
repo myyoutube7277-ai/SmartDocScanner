@@ -565,7 +565,7 @@ fun CameraCapture(modifier: Modifier, onCaptured: (File) -> Unit) {
         Box(Modifier.align(Alignment.Center).size(260.dp,340.dp)){Text("",Modifier.fillMaxSize().border(2.dp,Color(0xFF27E0B3),RoundedCornerShape(8.dp)))}
         Surface(Modifier.align(Alignment.BottomCenter).padding(bottom=88.dp),color=Color.Black.copy(.78f),shape=RoundedCornerShape(20.dp)){Text(if(busy)"Enhancing & auto-cropping…" else "Tap to capture • Auto adjust",color=Color.White,modifier=Modifier.padding(horizontal=18.dp,vertical=9.dp))}
         FilledIconButton(onClick={val cap=capState ?: return@FilledIconButton;if(busy)return@FilledIconButton;busy=true;val f=File(c.cacheDir,"scan_${System.currentTimeMillis()}.jpg");cap.takePicture(ImageCapture.OutputFileOptions.Builder(f).build(),executor,object:ImageCapture.OnImageSavedCallback{override fun onError(e:ImageCaptureException){busy=false;Toast.makeText(c,e.message?:"Capture failed",Toast.LENGTH_SHORT).show()};override fun onImageSaved(r:ImageCapture.OutputFileResults){android.os.Handler(android.os.Looper.getMainLooper()).post{busy=false;onCaptured(prepareScanFile(c,f,"camera_adjusted"))}}})},Modifier.align(Alignment.BottomCenter).padding(bottom=18.dp).size(78.dp),colors=IconButtonDefaults.filledIconButtonColors(containerColor=Color.White,contentColor=Color.Black)){Icon(Icons.Default.CameraAlt,"Capture",Modifier.size(34.dp))}
-        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal=24.dp,bottom=22.dp),horizontalArrangement=Arrangement.SpaceBetween){IconButton(onClick={Toast.makeText(c,"Gallery is available below",Toast.LENGTH_SHORT).show()}){Icon(Icons.Default.PhotoLibrary,null,tint=Color.White)};IconButton(onClick={}){Icon(Icons.Default.FlashOn,null,tint=Color.White)}}
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start=24.dp, end=24.dp, bottom=22.dp),horizontalArrangement=Arrangement.SpaceBetween){IconButton(onClick={Toast.makeText(c,"Gallery is available below",Toast.LENGTH_SHORT).show()}){Icon(Icons.Default.PhotoLibrary,null,tint=Color.White)};IconButton(onClick={}){Icon(Icons.Default.FlashOn,null,tint=Color.White)}}
     }
     DisposableEffect(Unit){onDispose{executor.shutdown()}}
 }
@@ -578,7 +578,33 @@ fun ScanEditor(file:File,onBack:()->Unit,onAdd:(File)->Unit,onFinish:(File)->Uni
     Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("Edit & Enhance",color=Color.White)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}},actions={Button(onClick={savePage()?.let(onFinish)}){Text("Save")}})}){pad->
         Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)){
             Box(Modifier.fillMaxWidth().weight(1f).padding(12.dp),contentAlignment=Alignment.Center){bmp?.let{Image(it.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Fit)}}
-            LazyRow(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Original","Auto Enhance","B&W","Color").forEach{label->Card(onClick={filter=if(label=="Original")"Color" else if(label=="Auto Enhance")"High Contrast" else label;SettingsStore.setFilter(c,filter);bmp=bmp?.let{ScanProcessor.filter(it,filter)}},colors=CardDefaults.cardColors(containerColor=if((label=="B&W"&&filter=="B&W")||(label=="Color"&&filter=="Color")||(label=="Auto Enhance"&&filter=="High Contrast") )Color(0xFF27E0B3) else Color(0xFF111820)),modifier=Modifier.width(105.dp)){Column(Modifier.padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.Photo,null,tint=Color.White);Text(label,color=Color.White,style=MaterialTheme.typography.labelSmall)}}}}
+            val editOptions = listOf("Original", "Auto Enhance", "B&W", "Color")
+            LazyRow(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(editOptions) { label ->
+                    val selected = (label == "B&W" && filter == "B&W") ||
+                        (label == "Color" && filter == "Color") ||
+                        (label == "Auto Enhance" && filter == "High Contrast")
+                    Card(
+                        onClick = {
+                            filter = if (label == "Original") "Color" else if (label == "Auto Enhance") "High Contrast" else label
+                            SettingsStore.setFilter(c, filter)
+                            bmp = bmp?.let { image -> ScanProcessor.filter(image, filter) }
+                        },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) Color(0xFF27E0B3) else Color(0xFF111820)
+                        ),
+                        modifier = Modifier.width(105.dp)
+                    ) {
+                        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Photo, null, tint = Color.White)
+                            Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
             Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.SpaceEvenly){TextButton({showCrop=true}){Icon(Icons.Default.Crop,null);Text("Crop")};TextButton({bmp=bmp?.let{ScanProcessor.rotate(it)}}){Icon(Icons.Default.RotateRight,null);Text("Rotate")};TextButton({bmp=bmp?.let{ScanProcessor.filter(it,"High Contrast")}}){Icon(Icons.Default.AutoAwesome,null);Text("Enhance")};TextButton({}){Icon(Icons.Default.Tune,null);Text("Filter")};TextButton({bmp=ScanProcessor.decode(file)}){Icon(Icons.Default.Refresh,null);Text("Reset")}}
             Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){OutlinedButton(onClick={savePage()?.let(onAdd)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Add,null);Text("Add Page")};Button(onClick={savePage()?.let(onFinish)},modifier=Modifier.weight(1f)){Icon(Icons.Default.Done,null);Text("Finish & Save")}}
         }
@@ -776,7 +802,7 @@ fun ViewerScreen(file:File,onBack:()->Unit){
         Text("${page+1}/$count",color=Color.White,modifier=Modifier.align(Alignment.CenterHorizontally))
         LazyRow(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){items(count){i->Card(onClick={render(i)},border=if(i==page)androidx.compose.foundation.BorderStroke(2.dp,Color(0xFF27E0B3)) else null){Text("${i+1}",color=Color.White,modifier=Modifier.padding(16.dp))}}}}
         Row(Modifier.fillMaxWidth().padding(10.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton({ShareUtil.share(c,file,"application/pdf")},Modifier.weight(1f)){Icon(Icons.Default.Share,null);Text("Share")};OutlinedButton({Toast.makeText(c,"Rename from the edit menu",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Edit,null);Text("Rename")};Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);Toast.makeText(c,"Exported ${outs.size} images",Toast.LENGTH_SHORT).show()},Modifier.weight(1f)){Icon(Icons.Default.Image,null);Text("Pages")}}
-        Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",false){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}},Modifier.weight(1f)){Text("Text (OCR)")};OutlinedButton({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",true){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}},Modifier.weight(1f)){Text("More")}}
+        Row(Modifier.fillMaxWidth().padding(start=10.dp, end=10.dp, bottom=12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){Button({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",false){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.wordprocessingml.document")}},Modifier.weight(1f)){Text("Text (OCR)")};OutlinedButton({val outs=PdfEngine.pdfToImages(file,c.filesDir);exportOcrPages(c,outs,file.nameWithoutExtension+"_Editable",true){o->if(o!=null)ShareUtil.share(c,o,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}},Modifier.weight(1f)){Text("More")}}
     }
     if(rename)AlertDialog(onDismissRequest={rename=false},title={Text("Rename PDF")},text={OutlinedTextField(newName,{newName=it},singleLine=true)},confirmButton={Button({val n=newName.trim().ifBlank{file.nameWithoutExtension};val out=File(file.parentFile,"$n.pdf");file.renameTo(out);rename=false}){Text("Save")}},dismissButton={TextButton({rename=false}){Text("Cancel")}})
 }
