@@ -1,1 +1,1 @@
-Trigger final verified SmartDocScanner build after scanner repair 2026-09-18.
+Trigger final verified SmartDocScanner build after scanner, crop, performance and Office export fixes 2026-09-18 03:10.
