@@ -73,14 +73,14 @@ fun IdScanScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
                     Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { IdPreviewFixed(front, "Front"); IdPreviewFixed(back, "Back") }
                 } else {
                     val selected = if (side == "Front") front else back
-                    if (selected != null) BitmapFactory.decodeFile(selected.absolutePath)?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+                    if (selected != null) ScanProcessor.decode(selected)?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("$side side not captured", color = Color.White) }
                 }
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (side != "Preview") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(enabled = selectedFile(front, back, side) != null && !busy, onClick = { cropBitmap = selectedFile(front, back, side)?.let { BitmapFactory.decodeFile(it.absolutePath) } }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Crop, null); Spacer(Modifier.width(5.dp)); Text("Manual Crop") }
+                    OutlinedButton(enabled = selectedFile(front, back, side) != null && !busy, onClick = { cropBitmap = selectedFile(front, back, side)?.let { ScanProcessor.decode(it) } }, modifier = Modifier.weight(1f)) { Icon(Icons.Default.Crop, null); Spacer(Modifier.width(5.dp)); Text("Manual Crop") }
                     OutlinedButton(enabled = selectedFile(front, back, side) != null && !busy, onClick = {
                         val selected = selectedFile(front, back, side) ?: return@OutlinedButton
                         busy = true
@@ -140,8 +140,8 @@ fun IdScanScreenFixed(onBack: () -> Unit, onSaved: () -> Unit) {
 private fun selectedFile(front: File?, back: File?, side: String): File? = if (side == "Front") front else back
 
 private fun prepareIdFile(context: Context, source: File, side: String): File = runCatching {
-    val bitmap = BitmapFactory.decodeFile(source.absolutePath) ?: return@runCatching source
-    val cropped = if (SettingsStore.autoCrop(context)) ScanProcessor.autoCrop(bitmap) else bitmap
+    val bitmap = ScanProcessor.decode(source) ?: return@runCatching source
+    val cropped = ScanProcessor.autoCrop(bitmap)
     val out = File(context.cacheDir, "id_${side}_processed_${System.currentTimeMillis()}.jpg")
     FileOutputStream(out).use { check(cropped.compress(Bitmap.CompressFormat.JPEG, 94, it)) }
     if (cropped !== bitmap) cropped.recycle()
