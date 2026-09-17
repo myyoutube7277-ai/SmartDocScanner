@@ -11,11 +11,9 @@ import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 object PdfEngine {
     enum class SizeMode { QUALITY, MAXIMUM }
-
     val sizeChoices = listOf("500 KB", "1 MB", "2 MB", "5 MB", "10 MB", "20 MB", "50 MB")
     val paperChoices = listOf("Auto", "A4", "A5", "Letter", "Legal")
 
@@ -27,163 +25,61 @@ object PdfEngine {
 
     fun createPdfWithLimit(contextDir: File, images: List<File>, mode: SizeMode, maxBytes: Long, name: String = "SmartDoc", paperSize: String = "Auto"): File? {
         if (images.isEmpty()) return null
+        contextDir.mkdirs()
         val out = File(contextDir, "${safe(name)}_${System.currentTimeMillis()}.pdf")
-        val qualities = if (mode == SizeMode.QUALITY) listOf(0.92f) else listOf(0.92f, 0.82f, 0.72f, 0.62f, 0.52f, 0.42f, 0.34f, 0.28f, 0.22f, 0.18f)
-        for (q in qualities) {
-            if (writePdf(out, images, q, paperSize) && (mode == SizeMode.QUALITY || out.length() <= maxBytes)) return out
-        }
-        out.delete()
-        return null
+        val qualities = if (mode == SizeMode.QUALITY) listOf(0.92f) else listOf(0.92f,0.82f,0.72f,0.62f,0.52f,0.42f,0.34f,0.28f,0.22f,0.18f)
+        for (q in qualities) if (writePdf(out, images, q, paperSize) && (mode == SizeMode.QUALITY || out.length() <= maxBytes)) return out
+        out.delete(); return null
     }
 
     fun detectPaperSize(src: Bitmap): String {
         val ratio = src.width.toFloat() / src.height.coerceAtLeast(1)
-        val candidates = listOf("A4" to 595f / 842f, "A5" to 420f / 595f, "Letter" to 612f / 792f, "Legal" to 612f / 1008f)
-        return candidates.minByOrNull { abs(ratio - it.second) }?.first ?: "A4"
+        val candidates = listOf("A4" to 595f/842f, "A5" to 420f/595f, "Letter" to 612f/792f, "Legal" to 612f/1008f)
+        return candidates.minByOrNull { abs(ratio-it.second) }?.first ?: "A4"
     }
 
     private fun writePdf(out: File, images: List<File>, quality: Float, paperSize: String): Boolean {
-        val pdf = PdfDocument()
+        val pdf=PdfDocument()
         return try {
-            images.forEachIndexed { idx, f ->
-                val src = BitmapFactory.decodeFile(f.absolutePath) ?: return@forEachIndexed
-                val (pageW, pageH) = pagePoints(src, paperSize)
-                val page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, idx + 1).create())
-                val scale = minOf(pageW.toFloat() / src.width, pageH.toFloat() / src.height)
-                val dw = src.width * scale
-                val dh = src.height * scale
-                val left = (pageW - dw) / 2f
-                val top = (pageH - dh) / 2f
+            images.forEachIndexed { idx,f ->
+                val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }; BitmapFactory.decodeFile(f.absolutePath,bounds)
+                if(bounds.outWidth<=0 || bounds.outHeight<=0) return@forEachIndexed
+                val sample=maxOf(1, maxOf(bounds.outWidth,bounds.outHeight)/2200)
+                val opt=BitmapFactory.Options().apply { inSampleSize=sample; inPreferredConfig=Bitmap.Config.RGB_565 }
+                val src=BitmapFactory.decodeFile(f.absolutePath,opt) ?: return@forEachIndexed
+                val (pageW,pageH)=pagePoints(src,paperSize)
+                val page=pdf.startPage(PdfDocument.PageInfo.Builder(pageW,pageH,idx+1).create())
+                val scale=minOf(pageW.toFloat()/src.width,pageH.toFloat()/src.height)
+                val dw=src.width*scale; val dh=src.height*scale; val left=(pageW-dw)/2f; val top=(pageH-dh)/2f
                 page.canvas.drawColor(Color.WHITE)
-                page.canvas.drawBitmap(src, null, RectF(left, top, left + dw, top + dh), Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
-                pdf.finishPage(page)
-                src.recycle()
+                page.canvas.drawBitmap(src,null,RectF(left,top,left+dw,top+dh),Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+                pdf.finishPage(page); src.recycle()
             }
-            FileOutputStream(out).use { pdf.writeTo(it) }
-            out.exists() && out.length() > 0
-        } catch (_: Exception) {
-            false
-        } finally {
-            pdf.close()
-        }
+            FileOutputStream(out).use { pdf.writeTo(it) }; out.exists() && out.length()>0
+        } catch(_:Exception){ false } finally { pdf.close() }
     }
 
-    private fun pagePoints(src: Bitmap, choice: String): Pair<Int, Int> = when {
-        choice.equals("A4", true) -> 595 to 842
-        choice.equals("A5", true) -> 420 to 595
-        choice.equals("Letter", true) -> 612 to 792
-        choice.equals("Legal", true) -> 612 to 1008
-        else -> when (detectPaperSize(src)) {
-            "A5" -> 420 to 595
-            "Letter" -> 612 to 792
-            "Legal" -> 612 to 1008
-            else -> 595 to 842
-        }
+    private fun pagePoints(src: Bitmap,choice:String):Pair<Int,Int> = when {
+        choice.equals("A4",true)->595 to 842; choice.equals("A5",true)->420 to 595
+        choice.equals("Letter",true)->612 to 792; choice.equals("Legal",true)->612 to 1008
+        else->when(detectPaperSize(src)){"A5"->420 to 595;"Letter"->612 to 792;"Legal"->612 to 1008;else->595 to 842}
     }
 
     fun createIdCardPdf(contextDir: File, front: File, back: File, name: String): File? {
-        val a = BitmapFactory.decodeFile(front.absolutePath) ?: return null
-        val b = BitmapFactory.decodeFile(back.absolutePath) ?: run { a.recycle(); return null }
-        val out = File(contextDir, "${safe(name)}_${System.currentTimeMillis()}.pdf")
-        val pdf = PdfDocument()
+        val a=BitmapFactory.decodeFile(front.absolutePath) ?: return null
+        val b=BitmapFactory.decodeFile(back.absolutePath) ?: run{a.recycle();return null}
+        val out=File(contextDir,"${safe(name)}_${System.currentTimeMillis()}.pdf"); val pdf=PdfDocument()
         return try {
-            val pageW = 595
-            val pageH = 842
-            val page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, 1).create())
-            page.canvas.drawColor(Color.WHITE)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-            val gap = 24f
-            val margin = 28f
-            val boxW = (pageW - margin * 2 - gap) / 2f
-            fun drawCard(src: Bitmap, left: Float, top: Float) {
-                val scale = minOf(boxW / src.width, 300f / src.height)
-                val w = src.width * scale
-                val h = src.height * scale
-                val y = top + (300f - h) / 2f
-                page.canvas.drawBitmap(src, null, RectF(left, y, left + w, y + h), paint)
-            }
-            page.canvas.drawText("FRONT", margin, 62f, paint)
-            page.canvas.drawText("BACK", margin + boxW + gap, 62f, paint)
-            drawCard(a, margin, 78f)
-            drawCard(b, margin + boxW + gap, 78f)
-            pdf.finishPage(page)
-            FileOutputStream(out).use { pdf.writeTo(it) }
-            if (out.exists() && out.length() > 0L) out else null
-        } catch (_: Exception) {
-            null
-        } finally {
-            pdf.close(); a.recycle(); b.recycle()
-        }
+            val page=pdf.startPage(PdfDocument.PageInfo.Builder(595,842,1).create()); page.canvas.drawColor(Color.WHITE); val paint=Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG); val gap=24f; val margin=28f; val boxW=(595-margin*2-gap)/2f
+            fun drawCard(src:Bitmap,left:Float,top:Float){val scale=minOf(boxW/src.width,300f/src.height);val w=src.width*scale;val h=src.height*scale;val y=top+(300f-h)/2f;page.canvas.drawBitmap(src,null,RectF(left,y,left+w,y+h),paint)}
+            paint.textSize=14f; paint.color=Color.BLACK; page.canvas.drawText("FRONT",margin,62f,paint);page.canvas.drawText("BACK",margin+boxW+gap,62f,paint);drawCard(a,margin,78f);drawCard(b,margin+boxW+gap,78f);pdf.finishPage(page);FileOutputStream(out).use{pdf.writeTo(it)};if(out.exists()&&out.length()>0)out else null
+        }catch(_:Exception){null}finally{pdf.close();a.recycle();b.recycle()}
     }
 
-    fun pdfToImages(pdf: File, outDir: File): List<File> {
-        val result = mutableListOf<File>()
-        val pfd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
-        val renderer = PdfRenderer(pfd)
-        try {
-            for (i in 0 until renderer.pageCount) {
-                val page = renderer.openPage(i)
-                val bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(Color.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                val f = File(outDir, "${pdf.nameWithoutExtension}_${i + 1}.jpg")
-                FileOutputStream(f).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
-                bitmap.recycle()
-                page.close()
-                result += f
-            }
-        } finally {
-            renderer.close()
-            pfd.close()
-        }
-        return result
-    }
-
-    fun mergePdfs(outputDir: File, pdfs: List<File>, name: String = "Merged_Document"): File? {
-        if (pdfs.size < 2) return null
-        val images = mutableListOf<File>()
-        return try {
-            pdfs.forEachIndexed { i, pdf ->
-                images += pdfToImages(pdf, outputDir).mapIndexed { j, f ->
-                    val renamed = File(outputDir, "merge_${i}_${j}_${System.currentTimeMillis()}.jpg")
-                    if (f.renameTo(renamed)) renamed else f
-                }
-            }
-            createPdfWithLimit(outputDir, images, SizeMode.QUALITY, Long.MAX_VALUE, name, "Auto")
-        } finally {
-            images.forEach { it.delete() }
-        }
-    }
-
-    fun splitPdf(outputDir: File, pdf: File): List<File> {
-        val pages = pdfToImages(pdf, outputDir)
-        val result = mutableListOf<File>()
-        pages.forEachIndexed { idx, image ->
-            val out = createPdfWithLimit(outputDir, listOf(image), SizeMode.QUALITY, Long.MAX_VALUE, "${safe(pdf.nameWithoutExtension)}_page_${idx + 1}", "Auto")
-            if (out != null) result += out
-            image.delete()
-        }
-        return result
-    }
-
-    fun compressPdf(outputDir: File, pdf: File, name: String = pdf.nameWithoutExtension): File? {
-        val pages = pdfToImages(pdf, outputDir)
-        val target = (pdf.length() * 0.70).toLong().coerceAtLeast(500L * 1024L)
-        val out = createPdfWithLimit(outputDir, pages, SizeMode.MAXIMUM, target, name, "Auto")
-        pages.forEach { it.delete() }
-        return out
-    }
-
-    private fun parseSize(value: String): Long = when {
-        value.startsWith("500") -> 500L * 1024L
-        value.startsWith("1 MB") -> 1L * 1024L * 1024L
-        value.startsWith("2 MB") -> 2L * 1024L * 1024L
-        value.startsWith("5 MB") -> 5L * 1024L * 1024L
-        value.startsWith("10 MB") -> 10L * 1024L * 1024L
-        value.startsWith("20 MB") -> 20L * 1024L * 1024L
-        value.startsWith("50 MB") -> 50L * 1024L * 1024L
-        else -> 5L * 1024L * 1024L
-    }
-
-    private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9._-]"), "_").take(50).ifBlank { "export" }
+    fun pdfToImages(pdf:File,outDir:File):List<File>{outDir.mkdirs();val result=mutableListOf<File>();val pfd=ParcelFileDescriptor.open(pdf,ParcelFileDescriptor.MODE_READ_ONLY);val renderer=PdfRenderer(pfd);try{for(i in 0 until renderer.pageCount){val page=renderer.openPage(i);val bitmap=Bitmap.createBitmap(page.width*2,page.height*2,Bitmap.Config.ARGB_8888);bitmap.eraseColor(Color.WHITE);page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);val f=File(outDir,"${pdf.nameWithoutExtension}_${i+1}.jpg");FileOutputStream(f).use{bitmap.compress(Bitmap.CompressFormat.JPEG,92,it)};bitmap.recycle();page.close();result+=f}}finally{renderer.close();pfd.close()};return result}
+    fun mergePdfs(outputDir:File,pdfs:List<File>,name:String="Merged_Document"):File?{if(pdfs.size<2)return null;val images=mutableListOf<File>();return try{pdfs.forEachIndexed{i,p->images+=pdfToImages(p,outputDir).mapIndexed{j,f->val r=File(outputDir,"merge_${i}_${j}_${System.currentTimeMillis()}.jpg");if(f.renameTo(r))r else f}};createPdfWithLimit(outputDir,images,SizeMode.QUALITY,Long.MAX_VALUE,name,"Auto")}finally{images.forEach{it.delete()}}}
+    fun splitPdf(outputDir:File,pdf:File):List<File>{val pages=pdfToImages(pdf,outputDir);val result=mutableListOf<File>();pages.forEachIndexed{idx,image->{createPdfWithLimit(outputDir,listOf(image),SizeMode.QUALITY,Long.MAX_VALUE,"${safe(pdf.nameWithoutExtension)}_page_${idx+1}","Auto")?.let{result+=it};image.delete()}};return result}
+    fun compressPdf(outputDir:File,pdf:File,name:String=pdf.nameWithoutExtension):File?{val pages=pdfToImages(pdf,outputDir);val target=(pdf.length()*0.70).toLong().coerceAtLeast(500L*1024L);val out=createPdfWithLimit(outputDir,pages,SizeMode.MAXIMUM,target,name,"Auto");pages.forEach{it.delete()};return out}
+    private fun parseSize(value:String):Long=when{value.startsWith("500")->500L*1024L;value.startsWith("1 MB")->1L*1024L*1024L;value.startsWith("2 MB")->2L*1024L*1024L;value.startsWith("5 MB")->5L*1024L*1024L;value.startsWith("10 MB")->10L*1024L*1024L;value.startsWith("20 MB")->20L*1024L*1024L;value.startsWith("50 MB")->50L*1024L*1024L;else->5L*1024L*1024L}
+    private fun safe(s:String)=s.replace(Regex("[^A-Za-z0-9._-]"),"_").take(50).ifBlank{"export"}
 }
