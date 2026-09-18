@@ -49,21 +49,27 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipFile
 import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SmartDocApp() }
+        val incoming = intent?.data?.let { uri ->
+            if (intent?.action == Intent.ACTION_VIEW && (intent?.type == "application/pdf" || intent?.type?.endsWith("/pdf") == true)) {
+                copyUriToCache(this, uri, "opened_" + System.currentTimeMillis() + ".pdf")
+            } else null
+        }
+        setContent { SmartDocApp(initialFile = incoming) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SmartDocApp() {
+fun SmartDocApp(initialFile: File? = null) {
     val c = LocalContext.current
-    var screen by remember { mutableStateOf("home") }
-    var selectedFile by remember { mutableStateOf<File?>(null) }
+    var screen by remember { mutableStateOf(if (initialFile?.exists() == true) "viewer" else "home") }
+    var selectedFile by remember { mutableStateOf(initialFile) }
     var refresh by remember { mutableIntStateOf(0) }
     var settingsVersion by remember { mutableIntStateOf(0) }
     val dark = remember(settingsVersion) { SettingsStore.darkTheme(c) }
@@ -101,7 +107,7 @@ fun SmartDocApp() {
                 onDocuments = { screen = "documents" },
                 onHelp = { screen = "help" },
                 refresh = refresh,
-                onOpen = { selectedFile = it; screen = "viewer" }
+                onOpen = { selectedFile = it; screen = if (it.extension.equals("zip", true)) "zipviewer" else "viewer" }
             )
             "documents" -> DocumentsScreen(
                 refresh = refresh,
@@ -122,6 +128,7 @@ fun SmartDocApp() {
             "idscan" -> IdScanScreenFixed(onBack = { screen = "home" }, onSaved = { refresh++; screen = "home" })
             "pdf" -> PdfToolsScreen(onBack = { screen = "home" })
             "viewer" -> selectedFile?.let { ViewerScreen(it, onBack = { screen = "home" }) }
+            "zipviewer" -> selectedFile?.let { ZipViewerScreen(it, onBack = { screen = "home" }) }
             "help" -> HelpScreen(onBack = { screen = "home" })
         }
     }
@@ -176,7 +183,7 @@ fun HomeScreen(
             }
             if (files.isNotEmpty()) {
                 val pdf = PdfEngine.createPdfAuto(c.filesDir, files, SettingsStore.pdfMode(c), SettingsStore.maxSizeChoice(c), SettingsStore.paperSize(c), "Gallery_Scan")
-                if (pdf != null) { DocumentStore.add(c, DocumentRecord(System.currentTimeMillis(), "Gallery Scan", pdf.absolutePath)); Toast.makeText(c, "PDF saved", Toast.LENGTH_SHORT).show() }
+                if (pdf != null) { DocumentStore.register(c, pdf, pdf.name); Toast.makeText(c, "PDF saved", Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -751,11 +758,11 @@ fun BarcodeScreen(onBack:()->Unit){
 @Composable
 fun PdfToolsScreen(onBack:()->Unit){
     val c=LocalContext.current;var message by remember{mutableStateOf("Choose a PDF tool")}
-    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->val fs=uris.mapIndexedNotNull{i,u->copyUriToCache(c,u,"img_${System.currentTimeMillis()}_$i.jpg")};if(fs.isNotEmpty())PdfEngine.createPdfAuto(c.filesDir,fs,PdfEngine.SizeMode.MAXIMUM,SettingsStore.maxSizeChoice(c),SettingsStore.paperSize(c),"Images_to_PDF")?.let{DocumentStore.add(c,DocumentRecord(System.currentTimeMillis(),"Images to PDF",it.absolutePath));message="Images converted to PDF"}}
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->val fs=uris.mapIndexedNotNull{i,u->copyUriToCache(c,u,"img_${System.currentTimeMillis()}_$i.jpg")};if(fs.isNotEmpty())PdfEngine.createPdfAuto(c.filesDir,fs,PdfEngine.SizeMode.MAXIMUM,SettingsStore.maxSizeChoice(c),SettingsStore.paperSize(c),"Images_to_PDF")?.let{DocumentStore.register(c,it,it.name);message="Images converted to PDF"}}
     val merge=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){uris->val fs=uris.mapIndexedNotNull{i,u->copyUriToCache(c,u,"merge_${System.currentTimeMillis()}_$i.pdf")};if(fs.size>=2)PdfEngine.mergePdfs(c.filesDir,fs,"Merged_Document")?.let{message="Merged ${fs.size} PDFs"}else message="Select at least 2 PDFs"}
     val one=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"split.pdf")?.let{f->message="Split into ${PdfEngine.splitPdf(c.filesDir,f).size} pages"}}}
     val comp=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"compress.pdf")?.let{f->message=if(PdfEngine.compressPdf(c.filesDir,f,"Compressed")!=null)"Compressed PDF created" else "Compression failed"}}}
-    val export=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"export.pdf")?.let{f->val outs=PdfEngine.pdfToImages(f,c.filesDir);val z=zipFiles(c.filesDir,"PDF_Images",outs);if(z!=null)ShareUtil.share(c,z,"application/zip");message="Exported ${outs.size} page(s)"}}}
+    val export=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){u->u?.let{copyUriToCache(c,it,"export.pdf")?.let{f->val outs=PdfEngine.pdfToImages(f,c.filesDir);val z=zipFiles(c.filesDir,"PDF_Images",outs);if(z!=null){DocumentStore.register(c,z,z.name);ShareUtil.share(c,z,"application/zip");message="Saved ZIP in My Files and ready to open"}}}}
     Scaffold(containerColor=Color(0xFF05080C),topBar={TopAppBar(title={Text("PDF Tools",color=Color.White)},navigationIcon={IconButton({onBack()}){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}})}){pad->LazyColumn(Modifier.padding(pad).fillMaxSize().background(Color.Black).padding(12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
         item{Text("All PDF tools",color=Color.White,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
         item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){ToolCard("Merge PDF","Combine multiple PDFs",Icons.Default.Merge,{merge.launch(arrayOf("application/pdf"))},Modifier.weight(1f));ToolCard("Split PDF","Split into pages",Icons.Default.ContentCut,{one.launch(arrayOf("application/pdf"))},Modifier.weight(1f))}}
@@ -830,6 +837,51 @@ private fun exportOcrPages(context: android.content.Context, images: List<File>,
     }
 
     next(0)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ZipViewerScreen(file: File, onBack: () -> Unit) {
+    val c = LocalContext.current
+    var entries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selected by remember { mutableStateOf<String?>(null) }
+    var image by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(file) {
+        entries = runCatching {
+            ZipFile(file).use { z ->
+                z.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.lowercase().matches(Regex(".*\\.(jpg|jpeg|png|webp)$")) }
+                    .map { it.name }.toList()
+            }
+        }.getOrDefault(emptyList())
+    }
+    fun load(name: String) {
+        image = runCatching {
+            val out = File(c.cacheDir, "zip_view_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+            ZipFile(file).use { z ->
+                z.getInputStream(z.getEntry(name)).use { input ->
+                    out.outputStream().use { input.copyTo(it) }
+                }
+            }
+            BitmapFactory.decodeFile(out.absolutePath)
+        }.getOrNull()
+        selected = name
+    }
+    LaunchedEffect(entries) { if (entries.isNotEmpty() && selected == null) load(entries.first()) }
+    Scaffold(
+        containerColor = Color(0xFF05080C),
+        topBar = { TopAppBar(title = { Text(file.name, color = Color.White) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } }) }
+    ) { pad ->
+        Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)) {
+            Card(Modifier.fillMaxWidth().weight(1f).padding(10.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF101820))) {
+                image?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().padding(8.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit) }
+            }
+            Text("Pages: ${entries.size}", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp))
+            LazyRow(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(entries) { name -> OutlinedButton(onClick = { load(name) }) { Text(name.substringAfterLast('/')) } }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
