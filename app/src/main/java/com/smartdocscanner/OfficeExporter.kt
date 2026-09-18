@@ -201,6 +201,68 @@ object OfficeExporter {
         return file
     }
 
+    /**
+     * Builds an editable workbook from OCR rows while preserving detected table columns.
+     * Each inner list is one visual OCR row, ordered left-to-right.
+     */
+    fun xlsxFromRows(context: Context, title: String, rows: List<List<String>>): File {
+        val file = output(context, title, "xlsx")
+        val safeRows = if (rows.isEmpty()) listOf(listOf("")) else rows
+        val maxCol = safeRows.maxOfOrNull { it.size } ?: 1
+        fun escCell(v: String): String = esc(v).replace("\n", " ")
+        ZipOutputStream(FileOutputStream(file)).use { z ->
+            put(z, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+                </Types>
+            """.trimIndent())
+            put(z, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+                </Relationships>
+            """.trimIndent())
+            put(z, "docProps/core.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">
+                  <dc:title>\${esc(title)}</dc:title><dc:creator>SmartDoc Scanner</dc:creator>
+                </cp:coreProperties>
+            """.trimIndent())
+            put(z, "xl/workbook.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <sheets><sheet name="Scanned Data" sheetId="1" r:id="rId1"/></sheets>
+                </workbook>
+            """.trimIndent())
+            put(z, "xl/_rels/workbook.xml.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                </Relationships>
+            """.trimIndent())
+            val sheet = buildString {
+                append("""<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:\${column(maxCol - 1)}\${safeRows.size}"/><sheetFormatPr defaultRowHeight="20"/><sheetData>""")
+                safeRows.forEachIndexed { r, row ->
+                    append("<row r=\"\${r + 1}\">")
+                    row.forEachIndexed { c, value ->
+                        append("<c r=\"\${column(c)}\${r + 1}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">\${escCell(value.trim())}</t></is></c>")
+                    }
+                    append("</row>")
+                }
+                append("</sheetData></worksheet>")
+            }
+            put(z, "xl/worksheets/sheet1.xml", sheet)
+        }
+        register(context, file, title)
+        return file
+    }
+
     private fun column(index: Int): String {
         var n = index + 1
         var out = ""
