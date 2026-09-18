@@ -785,48 +785,68 @@ private fun zipFiles(dir: File, baseName: String, files: List<File>): File? = ru
     out
 }.getOrNull()
 
+private fun ocrRows(text: com.google.mlkit.vision.text.Text): List<List<String>> {
+    data class L(val value: String, val left: Int, val top: Int, val height: Int)
+    val lines = text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
+        val box = line.boundingBox ?: return@mapNotNull null
+        L(line.text, box.left, box.top, box.height().coerceAtLeast(1))
+    }.sortedWith(compareBy<L> { it.top }.thenBy { it.left })
+    if (lines.isEmpty()) return text.text.lines().map { listOf(it) }
+
+    val groups = mutableListOf<MutableList<L>>()
+    for (line in lines) {
+        val target = groups.lastOrNull()
+        val tolerance = maxOf(10, line.height / 2)
+        if (target == null || kotlin.math.abs(line.top - target.map { it.top }.average().toInt()) > tolerance) {
+            groups += mutableListOf(line)
+        } else {
+            target += line
+        }
+    }
+    return groups.map { row -> row.sortedBy { it.left }.map { it.value.trim() }.filter { it.isNotBlank() } }.filter { it.isNotEmpty() }
+}
+
 private fun exportOcrPages(context: android.content.Context, images: List<File>, title: String, excel: Boolean, onDone: (File?) -> Unit) {
     if (images.isEmpty()) { onDone(null); return }
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    val latin = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     val results = mutableListOf<String>()
+    val excelRows = mutableListOf<List<String>>()
+
+    fun finish() {
+        val out = if (excel) {
+            OfficeExporter.xlsxFromRows(context, title, excelRows)
+        } else {
+            OfficeExporter.docx(context, title, results.joinToString("\n\n"))
+        }
+        onDone(out)
+    }
 
     fun next(index: Int) {
-        if (index >= images.size) {
-            val text = results.joinToString("\n\n")
-            val out = if (excel) {
-                OfficeExporter.xlsx(context, title, text)
-            } else {
-                OfficeExporter.docx(context, title, text)
-            }
-            onDone(out)
-            return
-        }
+        if (index >= images.size) { finish(); return }
+        val source = runCatching { InputImage.fromFilePath(context, Uri.fromFile(images[index])) }.getOrNull()
+        if (source == null) { results += ""; next(index + 1); return }
 
-        val source = runCatching {
-            InputImage.fromFilePath(context, Uri.fromFile(images[index]))
-        }.getOrNull()
-
-        if (source == null) {
-            results += ""
-            next(index + 1)
-            return
-        }
-
-        recognizer.process(source)
+        latin.process(source)
             .addOnSuccessListener { en ->
-                if (SettingsStore.hindiOcr(context)) {
+                val useHindi = SettingsStore.hindiOcr(context)
+                if (useHindi) {
                     TextRecognition.getClient(DevanagariTextRecognizerOptions.Builder().build())
                         .process(source)
                         .addOnSuccessListener { hi ->
-                            results += if (hi.text.isNotBlank()) hi.text else en.text
+                            val hindiPreferred = hi.text.any { it in '\u0900'..'\u097F' }
+                            val chosen = if (hindiPreferred) hi else en
+                            results += chosen.text
+                            if (excel) excelRows += ocrRows(chosen)
                             next(index + 1)
                         }
                         .addOnFailureListener {
                             results += en.text
+                            if (excel) excelRows += ocrRows(en)
                             next(index + 1)
                         }
                 } else {
                     results += en.text
+                    if (excel) excelRows += ocrRows(en)
                     next(index + 1)
                 }
             }
@@ -835,53 +855,7 @@ private fun exportOcrPages(context: android.content.Context, images: List<File>,
                 next(index + 1)
             }
     }
-
     next(0)
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ZipViewerScreen(file: File, onBack: () -> Unit) {
-    val c = LocalContext.current
-    var entries by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selected by remember { mutableStateOf<String?>(null) }
-    var image by remember { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(file) {
-        entries = runCatching {
-            ZipFile(file).use { z ->
-                z.entries().asSequence()
-                    .filter { !it.isDirectory && it.name.lowercase().matches(Regex(".*\\.(jpg|jpeg|png|webp)$")) }
-                    .map { it.name }.toList()
-            }
-        }.getOrDefault(emptyList())
-    }
-    fun load(name: String) {
-        image = runCatching {
-            val out = File(c.cacheDir, "zip_view_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-            ZipFile(file).use { z ->
-                z.getInputStream(z.getEntry(name)).use { input ->
-                    out.outputStream().use { input.copyTo(it) }
-                }
-            }
-            BitmapFactory.decodeFile(out.absolutePath)
-        }.getOrNull()
-        selected = name
-    }
-    LaunchedEffect(entries) { if (entries.isNotEmpty() && selected == null) load(entries.first()) }
-    Scaffold(
-        containerColor = Color(0xFF05080C),
-        topBar = { TopAppBar(title = { Text(file.name, color = Color.White) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } }) }
-    ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize().background(Color.Black)) {
-            Card(Modifier.fillMaxWidth().weight(1f).padding(10.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF101820))) {
-                image?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().padding(8.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit) }
-            }
-            Text("Pages: ${entries.size}", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp))
-            LazyRow(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(entries) { name -> OutlinedButton(onClick = { load(name) }) { Text(name.substringAfterLast('/')) } }
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
